@@ -40,15 +40,15 @@ gridTiles = gpd.read_file(gridTiles_geojson_path)
 sector_path = os.path.join(homedir, 'QGis/data_NeRD/AIS_outline_sectors.shp')
 sector_poly = gpd.read_file(sector_path)
 sector_ID_list = sector_poly['sector_ID'].to_list()
-
+sector_ID_list.sort()
 # print(sector_ID_list)
         
 
-years_list = ['2015']#,'2016','2017','2018','2019','2020','2021']
+# years_list = ['2015']#,'2016','2017','2018','2019','2020','2021']
 
-variables_to_save = ['dmg095']
-# variables_to_save = ['dmg-25px']
-# variables_to_save = ['nodata']
+# variables_to_save = ['dmg095']
+# # variables_to_save = ['dmg-25px']
+# # variables_to_save = ['nodata']
 
 
 
@@ -73,14 +73,10 @@ iceshelf_df_2019 = gpd.read_file(os.path.join(path2iceshelves, 'iceshelf_polygon
 iceshelf_df_2020 = gpd.read_file(os.path.join(path2iceshelves, 'iceshelf_polygon_measures_greene_2020.2.shp' ) )
 iceshelf_df_2021 = gpd.read_file(os.path.join(path2iceshelves, 'iceshelf_polygon_measures_greene_2021.2.shp' ) )
 
-ishelf_dict = { '1997':iceshelf_df_1997,
-                '2015':iceshelf_df_2015,
-                '2016':iceshelf_df_2016,
-                '2017':iceshelf_df_2017,
-                '2018':iceshelf_df_2018,
-                '2019':iceshelf_df_2019,
-                '2020':iceshelf_df_2020,
-                '2021':iceshelf_df_2021,
+ishelf_dict = { '1997':iceshelf_df_1997,'2015':iceshelf_df_2015,
+                '2016':iceshelf_df_2016,'2017':iceshelf_df_2017,
+                '2018':iceshelf_df_2018,'2019':iceshelf_df_2019,
+                '2020':iceshelf_df_2020,'2021':iceshelf_df_2021,
 }
 
 
@@ -99,11 +95,11 @@ Variables to save:
 'dmg','dmg-25px','nodata'
 ------------------ '''
 
-years_list = ['1997']
-# years_list = ['1997','2015','2016','2017','2018','2019','2020','2021']
+# years_list = ['1997']
+years_list = ['2015','2016','2017','2018','2019','2020','2021']
 
 varName = 'dmg'
-# varName = 'nodata'
+varName = 'nodata'
 
 sector_ID_list.sort()
 
@@ -111,11 +107,20 @@ save_nc = True
 save_tif = True
 
 for year in years_list:
-    
-    for sector_ID in sector_ID_list:
-        if sector_ID == 'WIS' or sector_ID == 'WS': # skip WIS in favor of WIS-a and WIS-b (process in parts due to memory usage)
-            continue 
+    res='400m'
+    if varName == 'dmg-25px':
+        region_data = region_data.rename({'dmg-25px':'dmg'})
+        res='1000m'
+    if int(year) == 1997:
+        res='1000m'
 
+    for sector_ID in ['WS']: #sector_ID_list:
+        if sector_ID == 'WIS' : # skip WIS in favor of WIS-a and WIS-b (process in parts due to memory usage)
+            continue 
+        # if sector_ID == 'WS' and res=='400m':
+        #     continue
+
+        
         ''' --------------
         Define tileNumbers for selected region
         ------------------ ''' 
@@ -134,7 +139,7 @@ for year in years_list:
         print(f'.. loading data for {year}; {varName}')
 
         ''' --------------
-        Load DMG 
+        Load DMG or no-data 
         ------------------ ''' 
 
         if 'dmg' in varName:
@@ -152,7 +157,8 @@ for year in years_list:
             var='nodata'
 
         ## get all files in directory 
-        year_filelist = os.listdir(os.path.join(tilepath_in,year_subdir ))
+        # year_filelist = os.listdir(os.path.join(tilepath_in,year_subdir ))
+        year_filelist = glob.glob(os.path.join(tilepath_in,year_subdir,'*.tif' ))
         year_filelist.sort()
 
         ## select tiles in region
@@ -166,17 +172,13 @@ for year in years_list:
                     compat='no_conflicts', #  only values which are not null in both datasets must be equal. The returned dataset then contains the combination of all non-null values
                     chunks={'y':'auto','x':'auto','band':1}, # add chucnking info for dask
                     parallel=True,
+                    # engine='rasterio'
                     ).isel(band=0).drop('band')
                     .transpose('y','x')
                     .rename({'band_data':varName})
         )
 
-        res='400m'
-        if varName == 'dmg-25px':
-            region_data = region_data.rename({'dmg-25px':'dmg'})
-            res='1000m'
-        if int(year) == 1997:
-            res='1000m'
+        
 
         ''' ## Fill dmg NaN values as 0  '''
         region_data = region_data.where(~np.isnan(region_data),other=0 ) # no-dmg = 0
@@ -186,19 +188,21 @@ for year in years_list:
         ''' --------------------------------------
         Small fixes to data for netcdf/tiff saving
         ------------------------------------------ '''
+        try:
+            region_data = region_data.drop('spatial_ref')
+        except: pass
+        try:
+            del region_data[varName].attrs['grid_mapping']
+        except: pass
 
         if not region_data.rio.crs:
-            print('.. setting CRS to 3031')
-            region_data = region_data.drop('spatial_ref')
+            # print('.. setting CRS to 3031')
             region_data.rio.write_crs(3031,inplace=True)
-            del region_data[varName].attrs['grid_mapping']
-
         
         ''' ## drop 'time' dimension  '''
         if len(region_data.dims) > 2:
             print(region_data.dims)
             region_data= region_data.isel(band=0).drop('band')
-
 
         ## Small fixes to file
         region_data.astype(float)[varName].rio.write_nodata(np.nan, encoded=True, inplace=True)
