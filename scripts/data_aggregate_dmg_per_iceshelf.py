@@ -93,7 +93,7 @@ def parse_cla():
     group2 = parser.add_mutually_exclusive_group(required=False) 
     group2.add_argument("--year","-y",help='Specify year to process. Unspecified means all years',type=str )  
     parser.add_argument('--resolution','-res',help='Processed resolution',type=str,required=False,
-                            choices=('400m','1000m','downsampled'))
+                            choices=('400m','1000m','downsampled'),default='1000m')
                             
     args = parser.parse_args()
     return args 
@@ -429,7 +429,7 @@ if __name__ == '__main__':
     Run script as "python path/to/script.py --sector sector_ID
  
     Additional options:
-    --resolution   :  read damage netcdfs with assessments at 400m or 1000m resolution
+    --resolution   :  read damage netcdfs with assessments at 400m or 1000m resolution (default: 1000m)
     --year         :  Can process a single year. If unspecified, will process all available years.
 
     -------------------------------------------------------------- '''
