@@ -32,131 +32,10 @@ def get_tilelist_region(region_polys, sector_ID, gridTiles=None):
     return tileNums_select
 
 
-def load_tile_yxt( tilepath , subdir , tileNum, year=None, name='unknown', CRS=3031):
-    '''Load a datatile from disk to an xarray.dataArray
-    
-    Input
-    -----
-    tilepath    :   Path to data folder containing geotiffs of the variable.
-    subdir      :   Subdirectory. Usually, the data is stored in a folder-per-year (e.g. '2016' or '2016-SON')
-    tileNum     :   Tile Number to load. Float or Integer
-    year        :   The year of the dataset that is loaded. 
-                    If None is given, the function first tries to infer the value from the subfolder name and otherwise sets year=0.
-                    The value is used to define the temporal dimension of the xr.DataArray
-    name        :   Variable name to set in xr.DataArray
-                    Also used to filter files, if there are more variables stored in the same directory.
-    CRS         :   The projection of the data (number). Default EPSG:3031
-
-    
-    Output
-    ------
-    img         :   An xr.DataArray of the loaded file in shape (y,x,time). Includes CRS.
-
-    '''
-    
-    # search for tilenumber in directory
-    tile_file = glob.glob(os.path.join(tilepath,subdir ,'*_'+str(int(tileNum))+'.tif'))
-    if not tile_file:
-        raise ValueError('No files found for {}'.format(os.path.join(tilepath,subdir ,'*_'+str(int(tileNum))+'.tif') ))
-    elif len(tile_file) > 1: # multiple files present. Further filter search for variable name
-        tile_file = [ fname for fname in tile_file if name in fname ] 
-    
-    if len(tile_file) > 1:
-        raise ValueError('Multiple tiles found for {}:\n {}'.format(
-                    os.path.join(tilepath,subdir ,'*_'+str(int(tileNum))+'.tif') ,
-                    tile_file))
-    
-    tile_file = tile_file[0] # 1-element list to string
-
-    # if name not in tile_file:
-    #     raise ValueError('Found tile in folder, but varname {} does not occur in filename {}'.format(name, os.path.split(tile_file)[1]))
-
-    # read with rioxarray
-    img = rioxr.open_rasterio(os.path.join(tilepath , subdir, tile_file)).squeeze() # read geotiff
-    # img.rio.write_crs(3031, inplace=True) # make sure it has the correct projection information
-    img.name = name
-    img.attrs['long_name']=name
-
-    # If the year of the dataset is not specified, infer information of what year the data is, or set to 0
-    if year is None:
-        try:
-            year=int(subdir)
-        except:
-            year=0
-
-    # add time-dimension to xarray.DataArray
-    img = xr.DataArray( data = np.expand_dims(img.data,-1),  # (y,x) to (y,x,1)
-                        coords={'y': (img["y"]),
-                                'x': (img["x"]),
-                                'time':([int(year)])},
-                        name=name, 
-                        attrs=img.attrs, indexes=img.indexes)  # copy other properties
-    img.rio.write_crs(CRS, inplace=True) # make sure it has projection information
-
-    return img
-
-
 def clip_da_to_iceshelf(data_da, iceshelf_polygon_gpd,drop=False):
      ''' Clip data (xarray.DataArray) to ice shelf polygon file (geopandas.DataFrame) '''
      return data_da.rio.clip( iceshelf_polygon_gpd.geometry, iceshelf_polygon_gpd.crs, drop=drop, invert=False)
 
-
-def check_theta_p_e11_e22(exx,eyy,exy,emax,theta_p):
-    '''Identify if calculated principal strain orientation aligns with e_11 or e_22
-    
-    Input
-    -----
-    exx:    strain tensor e_11
-    eyy:    strain tensor e_22
-    exy:    shear strain tensor e_12=e_21 (1/2 of engineering strain)
-    emax:   
-    '''
-        
-    # Construct strain and angle matrices
-    E = np.array([ [exx.squeeze(), exy.squeeze() ], 
-                   [exy.squeeze(), eyy.squeeze() ] ]) # shape (x y n k) (2, 2, 494, 401) <-- should be (494, 401, 2, 2)
-
-    Q = np.array([ [ np.cos(theta_p.squeeze()), np.sin(theta_p.squeeze())], 
-                   [-np.sin(theta_p.squeeze()), np.cos(theta_p.squeeze())] ])  # shape (x y k m) (2, 2, 494, 401) <-- should be (494, 401, 2, 2)      
-
-    Qt = np.transpose(Q, (1, 0, 2, 3)) # (2, 2, 494, 401); transposed the (2,2) axes
-
-    # move axes for np.matmul (from (2,2,x,y) to (x,y, 2, 2 ))
-    E = np.moveaxis(E, [0, 1], [-2, -1]) # shape (494, 401, 2, 2); (x y n k)
-    Q = np.moveaxis(Q, [0, 1], [-2, -1]) # shape (494, 401, 2, 2); (x y k m)
-    Qt = np.moveaxis(Qt, [0, 1], [-2, -1]) #  shape (494, 401, 2, 2); (x y k m) 
-
-    Edot = np.matmul(np.matmul(Q,E),Qt)
-
-    # Update_theta_p to match e11
-    e11 = Edot[:,:,0,0]
-    e22 = Edot[:,:,1,1] 
-    ndec = 6
-
-    # idx where emax=e11, theta_p is correct 
-    idx_e11_eq_emax = e11.round(ndec) == emax.values.round(ndec) 
-
-    # idx where emax=e22, theta_p should be + 90 degree
-    idx_e22_eq_emax = e22.round(ndec) == emax.values.round(ndec) 
-
-    # if emax is not e11, it should be e22
-    idx_correct = ~idx_e11_eq_emax == idx_e22_eq_emax 
-    idx_correct[np.isnan(e11)] = True
-    # --> check pixels where this is not true
-    if not idx_correct.all():
-        diff_e11 = np.nan_to_num(np.abs(emax-e11))
-        diff_e22 = np.nan_to_num(np.abs(emax-e22)) 
-        min_diff =  np.array((diff_e11,diff_e22)).min(axis=0)
-        mindiff_e11_or_e22 = np.array((diff_e11,diff_e22)).argmin(axis=0) # 0 of minimum is found in e11; 1 if minimum diff is found in e22
-        mindiff_e11_or_e22[idx_correct] = -999                # skip pixels that were already correct
-
-        idx_e11_eq_emax[np.where(mindiff_e11_or_e22 == 0)] = True
-        idx_e22_eq_emax[np.where(mindiff_e11_or_e22 == 1)] = True
-
-        idx_correct = ~idx_e11_eq_emax == idx_e22_eq_emax 
-        idx_correct[np.isnan(e11)] = True
-
-    return idx_e22_eq_emax
 
 
 def calc_nominal_strain(vx, vy, length_scale_px=1 ,version2 = None , dx=None ):
@@ -226,15 +105,6 @@ def calc_nominal_strain(vx, vy, length_scale_px=1 ,version2 = None , dx=None ):
 
     theta_p = (np.arctan(2*exy/(exx-eyy))/2) # in radians
 
-    ## to do: Align orientation of principal strain to e_11 or e_22. Check if theta_p aligns with e_11 (then e_11 is emax) or e_22 then update theta_p value + 0.25 pi
-    # # idx_e22_eq_emax = check_theta_p_e11_e22(exx,eyy,exy,theta_p)
-    # idx_e22_eq_emax = check_theta_p_e11_e22(exx,eyy,exy,emax, theta_p) # theta_p aligns with e_22, aka e_min --> update theta_p value with +0.25 pi 
-    # theta_p = theta_p.squeeze().values
-    # theta_p[idx_e22_eq_emax] +=  np.pi/4 # 90 degrees is 1/4 pi 
-    # # theta_p to degrees
-    # theta_p_degr = theta_p*360/(2*np.pi)
-    # # convert to xarray dataArray
-    # theta_p_degr = emax_xr.copy(data=np.expand_dims(theta_p_degr,axis=-1))
 
     # theta_p to degrees
     theta_p_degr = theta_p*360/(2*np.pi)
@@ -246,85 +116,6 @@ def calc_nominal_strain(vx, vy, length_scale_px=1 ,version2 = None , dx=None ):
     else:
         return emax_xr, emin_xr, e_eff, strain_components
 
-def load_tiles_region_multiyear( tiledVar_path, tile_list , years_to_load=[] , varname='var_name' ):
-    '''
-    This function loads the 2D data for all the tiles specified in the tile_list to a single xr.DataArray
-    If the variable has data for multiple years, these are appended as a 3rd temporal dimension.
-    If years_to_load is None or Empty, a single 'year' is loaded, and given value time=0
-    
-    The data is loaded to a (y,x,t) format.
-    NB: data attributes are lost in the merging process. 
-    '''
-    
-    # set up empty list
-    var_tileList = []
-
-    for tileNum in tile_list: # [52]
-
-        # load tile data -- for multi years
-        if years_to_load: # if list is not empty, load multiple years
-
-            var_tile_yearList = []
-            for year in years_to_load: 
-                ''' Load annual img to (y,x,t) format xarray.DataArray
-                    Store these da's into a list, to combine them into one dataArray after the loop
-                '''
-                # subdirectory can be in format '2015-SON' or simply '2015', so include a check to its existance
-                if os.path.isdir(os.path.join(tiledVar_path, year)):
-                    subdir=year
-                elif os.path.isdir(os.path.join(tiledVar_path, year+'-SON')):
-                    subdir=year+'-SON'
-
-                # load data_yxt, set name of dataset variable
-                data_img  = load_tile_yxt(tiledVar_path,  subdir=subdir, 
-                                        tileNum = tileNum , year=year, name=varname) 
-
-                # store annual dmg/emax dataArray in list 
-                var_tile_yearList.append(  data_img) # list with DAs 
-
-            # Merge list of annual dataArrays into one (returns xr.dataSet because dataArrays are named)
-            # TO DO: attributes are lost somewhere here
-            tile_ds  = xr.combine_by_coords(var_tile_yearList   , combine_attrs='override')  # stacks years correctly 
-            
-        else: # only one year to load  
-            subdir = ''
-
-            # load data_yxt, set name of dataset variable
-            tile_ds  = load_tile_yxt(tiledVar_path,  subdir=subdir, 
-                                    tileNum = tileNum , name=varname).to_dataset()
-        
-        # store current tiledata in list
-        var_tileList.append( tile_ds )
-    
-
-    # Merge all tiles within region 
-    # TO DO: attributes are lost somewhere here
-
-    try:
-        region_ds  = xr.merge(var_tileList, combine_attrs='override')
-    
-    except xr.MergeError:
-        print('Merge error; try with compat=''override''')
-        region_ds  = xr.merge(var_tileList, combine_attrs='override',compat='override')
-
-    # # ## V2: merge with reproject; to make sure grids are merged correctly
-    # var_tileList2=[]
-    # tile_ref = var_tileList[0].transpose('time','y','x')
-    # for tile in var_tileList[1:]:
-    #     tile_matched = tile.transpose('time','y','x').rio.reproject_match(tile_ref,resampling=rio.enums.Resampling.nearest,nodata=np.nan) # need to specify nodata, otherwise fills with (inf) number 1.79769313e+308
-    #     # Update coords (advised)
-    #     tile_matched = tile_matched.assign_coords({
-    #         "y": tile_ref.y,
-    #         "x": tile_ref.x,
-    #     })
-    #     var_tileList2.append(tile_matched)
-    # ## region_ds = xr.concat(var_tileList2,dim='time',join='outer',coords='all',combine_attrs='override')#,fill_value=1)
-    # # region_ds  = xr.merge(var_tileList2, combine_attrs='override')
-
-    # release linked resources
-    region_ds.close()
-    
-    return region_ds
 
 
 def aggregate_region_ds_iceshelf( region_ds, varname , iceshelf_polygon_df, drop_clipped=False ):
@@ -379,113 +170,6 @@ def aggregate_region_ds_iceshelf( region_ds, varname , iceshelf_polygon_df, drop
     return data_iceshelf_1D_yrs
 
 
-# def remove_nanpx_multivar0( xdata, ydata, cdata):
-#     ''' Removes all pixels from data arrays that has a NaN value in either one of the arrays.
-
-#     Input
-#     -----
-#     xdata and ydata should have the same shape (N, y), and cdata is expected to have shape (N,) or (N,1)
-#     If y>1, the datasets are compared row by row (e.g. x[n,1] to y[n,1] and x[n,2] to y[n,2] ).
-
-#     Output
-#     ------
-#     Returns the data arrays with removed nan-pixels
-
-#     '''
-    
-#     ########## V1
-
-#     # if len(cdata.shape)>1: # cdata has shape (n,1) or (n,y)
-#     #     if cdata.shape[1] > 1:
-#     #         raise ValueError('Cdata expected to have shape (n,) or (n,1) but has shape {}'.format(cdata.shape))
-#     # else: # convert shape (n,) to (n,1)
-#     #     cdata = np.expand_dims(cdata,1)
-    
-#     # if xdata.shape != ydata.shape:
-#     #     raise ValueError('xdata and ydata should have the same shape, but are x:{} and y:{}'.format(xdata.shape,ydata.shape))
-    
-
-#     # if len(xdata.shape)>1: # input has shape (n, y); cdata should be (n,1)
-#     #     print('x y c shape ', xdata.shape, ydata.shape,cdata.shape)
-#     #     if xdata.shape[1] > 1:
-#     #         # extend data to have 3rd dim for concatenation
-#     #         x2 = np.expand_dims(xdata,2) # n,y,1
-#     #         y2 = np.expand_dims(ydata,2) # n,y,1
-#     #         c2 = np.expand_dims(cdata,2) # n,1,1
-#     #         # repeat cdata to create same dimensions 
-#     #         c3 = np.repeat(c2,4,axis=1) # (n,1,1) --> (n,4,1)
-#     #         data = np.concatenate([x2,y2,c3],axis=2) # n,y,2
-#     #         print('concat x y c', data.shape)
-
-#     #         id = np.any( np.isnan( data ), axis=2 , keepdims=True) # n,y,1
-#     #         xdata_clean = np.where( ~id , x2, np.nan  ).squeeze() # n,y
-#     #         ydata_clean = np.where( ~id , y2, np.nan  ).squeeze() # n,y
-#     #         cdata_clean = np.where( ~id , c3, np.nan  ).squeeze() # (n,y)
-#     #         print('xdata remove nan ' , xdata_clean.shape)
-
-#     #     elif xdata.shape[1] == 1: # (n,1)
-#     #         data = np.concatenate([xdata,ydata,cdata],axis=1) # n,3
-#     #         print('concat x y c, ' , data.shape)
-#     #         id = np.any( np.isnan( data ), axis=1 , keepdims=True) # n,1
-#     #         xdata_clean = np.where( ~id , xdata, np.nan  )# .squeeze() # n,1
-#     #         ydata_clean = np.where( ~id , ydata, np.nan )
-#     #         cdata_clean = np.where( ~id , cdata, np.nan )
-#     #         print('xdata remove nan ' , xdata_clean.shape)
-            
-#     # else: # xdata and ydata have shape (n, ); cdata should already be (n,1)
-#     #     print('Input shapes x,y,c', xdata.shape, ydata.shape, cdata.shape)
-#     #     x2 = np.expand_dims(xdata,1)
-#     #     y2 = np.expand_dims(ydata,1)
-#     #     data = np.concatenate([x2,y2,cdata],axis=1) # n,3
-#     #     print('concat x y c, ' , data.shape)
-#     #     id = np.any( np.isnan( data ), axis=1 , keepdims=True) # n,1
-#     #     xdata_clean = np.where( ~id , x2, np.nan  ).squeeze() # n,
-#     #     ydata_clean = np.where( ~id , y2, np.nan  ).squeeze() # n,
-#     #     cdata_clean = np.where( ~id , cdata, np.nan  ).squeeze() # n,
-
-#     ######### V0b
-
-#     # # if any([len(xdata) > 1, len(ydata) > 1, len(cdata)>1]):
-#     # #     if any( [xdata.shape[1]>1,ydata.shape[1]>1,cdata.shape[1]>1] ):
-#     # #         raise ValueError('Expected data of shape (n,) or (n,1), but has shape x:{}, y:{}, c:{}'.format(xdata.shape,ydata.shape,cdata.shape))
-#     # if len(xdata.shape)>1: # cdata has shape (n,1) or (n,y)
-#     #     if xdata.shape[1] > 1:
-#     #         raise ValueError('xdata expected to have shape (n,) or (n,1) but has shape {}'.format(xdata.shape))  
-#     # else: # convert shape (n,) to (n,1)
-#     #     xdata = np.expand_dims(xdata,1)
-
-#     # if len(ydata.shape)>1: 
-#     #     if ydata.shape[1] > 1:
-#     #         raise ValueError('ydata expected to have shape (n,) or (n,1) but has shape {}'.format(ydata.shape)) 
-#     # else: # convert shape (n,) to (n,1)
-#     #     ydata = np.expand_dims(ydata,1)
-        
-#     # if len(cdata.shape)>1: 
-#     #     if cdata.shape[1] > 1:
-#     #         raise ValueError('cdata expected to have shape (n,) or (n,1) but has shape {}'.format(cdata.shape)) 
-#     # else: # convert shape (n,) to (n,1)
-#     #     cdata = np.expand_dims(cdata,1)
-
-#     ###### v0a
-#     idx_nan = np.any( np.isnan( np.concatenate( [xdata, ydata, cdata] ,axis=1 )), axis=1) # (Nsamples, stack) --> (Nsamples, )
-#     xdata_clean = xdata[~idx_nan]
-#     ydata_clean = ydata[~idx_nan]
-#     cdata_clean = cdata[~idx_nan]
-#     return xdata_clean, ydata_clean, cdata_clean
-
-
-def remove_nanpx_multivar(*datasets): # datasets is tuple
-    
-    # Identify pixels that have NaN value in any of the data input 
-    idx_nan = np.any( np.isnan( np.concatenate( datasets ,axis=1 )), axis=1) # (Nsamples, stack) --> (Nsamples, )
- 
-    datasets_clean = [] # empty list
-    for var in datasets: # remove nanpixels from every variable
-        var_clean = var[~idx_nan]
-        datasets_clean.append(var_clean) # append list
-
-    return tuple(datasets_clean) # make tuple from list of variables    
-
 
 def fill_nan_cdata(xdata,ydata,cdata,fill_value=-999):
     ''' Remove pixels where x/y data have nodata, but 
@@ -524,40 +208,6 @@ def reproject_match_grid( ref_img_da, img_da , resample_method=rio.enums.Resampl
     })
     
     return img_repr_match.transpose(*dims) # transpose dimension order back to original
-
-def update_stricter_dmg_threshold( dmg_da , dmg_threshold ,reduce_or_mask_D='reduce',verbose=False):
-
-    ''' --------------------------------------
-    S1: Update dmg threshold to stricter value
-    dmg as is: quantiles [0, 25, 50, 75, 1] are at: [0 ,   0.007,  0.012,  0.022,  0.289] -- BASED ON ALL ASE TILES
-    tresh: 0.015 is good for plotting
-    tresh: 0.007 might (??) be good for boxplots
-    tresh: 0.043: new noise trheshold based on max(no-dmg-signal) instead of mean(no-dmg-signal) (new threhsold = 0.08, but need to update original t=0.037 with 0.043 for that)
-
-    Newly calculated dmg threshold:
-    Original: tau = 0.037 (based on mean(no-dmg) signal )
-    New       tau = 0.053 / 0.063 (based on pct 095/099 no-dmg signal)
-    -- should update dmg with   (0.053-0.037= 0.016)
-                                (0.063-0.037= 0.026)
-    ------------------------------------------ '''
-
-
-    if reduce_or_mask_D == 'reduce':
-        if verbose:
-            print("..Applying stricter threshold to dmg values (D = D - threshold): {}".format(dmg_threshold))
-        
-        # --lower dmg value
-        region_da_dmg_prune = dmg_da - dmg_threshold # region_ds_dmg - d_tresh
-        region_da_dmg_prune = region_da_dmg_prune.where(region_da_dmg_prune > 0, other=0) # .rename('dmg_prune') # sets other px to 0 -- because I dont want to remove NaN px too early
-
-    elif reduce_or_mask_D == 'mask':
-        if verbose: 
-            print("..Applying stricter threshold to dmg values (D = D where D < threshold): {}".format(dmg_threshold)) 
-        # --do not reduce d-value, only mask low values 
-        # (NB: need to be very sure that you want this, as it violates the NERD dmg-signal consistency w.r.t other data sources)
-        region_da_dmg_prune = dmg_da.where(dmg_da['dmg'] > dmg_threshold, other=0) # .rename('dmg_prune') # sets other px to 0 -- because I dont want to remove NaN px too early
-
-    return region_da_dmg_prune
 
 def repeat_static_variable_timeseries( region_ds , varname_to_repeat ):
     ''' --------------------------------------
