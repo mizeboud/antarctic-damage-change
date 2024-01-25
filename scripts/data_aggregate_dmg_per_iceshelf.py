@@ -1,55 +1,34 @@
-
 import os
-import rioxarray as rioxr
 import geopandas as gpd
-import matplotlib.pyplot as plt
 import numpy as np
 import glob
 import xarray as xr
 
-import rasterio as rio
-
 import pandas as pd 
 import re
-# import seaborn as sns
 import argparse
 
-# Import user functions
-# import postProcessFunctions as myf 
 import myFunctions as myf 
 import dask
-from joblib import Parallel, delayed
 import time
 
+
+
+''' --------------
+Set Paths
+------------------ '''
 homedir = '/Users/tud500158/Library/Mobile Documents/com~apple~CloudDocs/Documents/Documents - TUD500158/'
-# homedir = '/net/labdata/maaike/'
 
-tilepath_dmg = os.path.join(homedir,'Data/S1_SAR/tiles/dmg_tiled/')
-tilepath_dmg = os.path.join(homedir,'Data/RAMP/RAMP_tiled/dmg_tiled/')
-path2savefig = os.path.join(homedir,'Data/NERD/plots_dev/')
-path2data = os.path.join(homedir,'Data/NERD/DMG_aggregated/')
-path2data = os.path.join(homedir,'Data/NERD/dmg095_nc/aggregated/')
-# path2nc = os.path.join(homedir, 'Data/NERD/data_predictor/') 
-gridTiles_geojson_path = os.path.join(homedir,'Data/tiles/gridTiles_iceShelves_EPSG3031.geojson')
 
-if 'tud500158' in homedir:
-    path2iceshelves = os.path.join(homedir,'Data/Greene2022_AIS_coastlines/shapefiles/annual_iceshelf_polygons/revised_measures_greene/')
-    iceshelf_path_meas = os.path.join(homedir, 'QGis/Quantarctica/Quantarctica3/Glaciology/MEaSUREs Antarctic Boundaries/IceShelf/IceShelf_Antarctica_v02.shp')
-    # roi_path = os.path.join(homedir, 'QGis/data_NeRD/plot_insets_AIS_regions.shp')
-    sector_path = os.path.join(homedir, 'QGis/data_NeRD/plot_insets_AIS_sectors.shp')
+path2data = os.path.join(homedir, 'Data/NERD/dmg095_nc/data_sector/')
 
-if 'labdata' in homedir:
-    path2iceshelves = os.path.join(homedir, 'Data/SHAPEFILES/annual_iceshelf_polygons/revised_measures_greene/')
-    iceshelf_path_meas = os.path.join(homedir, 'Data/SHAPEFILES/IceShelf_Antarctica_v02.shp')
-    # roi_path = os.path.join(homedir, 'Data/SHAPEFILES/plot_insets_AIS_regions.shp')
-    sector_path = os.path.join(homedir, 'Data/SHAPEFILES/plot_insets_AIS_sectors.shp')
-    
+path2iceshelves = os.path.join(homedir,'Data/Greene2022_AIS_coastlines/shapefiles/annual_iceshelf_polygons/revised_measures_greene/')
+iceshelf_path_meas = os.path.join(homedir, 'QGis/Quantarctica/Quantarctica3/Glaciology/MEaSUREs Antarctic Boundaries/IceShelf/IceShelf_Antarctica_v02.shp')
+sector_path = os.path.join(homedir, 'QGis/data_NeRD/AIS_outline_sectors.shp')
 
 ''' --------------
 Get Shapefiles 
 ------------------ '''
-# geojson
-gridTiles = gpd.read_file(gridTiles_geojson_path)
 
 # measures ice shelves
 iceshelf_poly_meas = gpd.read_file(iceshelf_path_meas)
@@ -151,22 +130,16 @@ def setup_iceshelf_df_entry(iceshelf_name, ishelf_region, sector_ID ):
 
 def main( sector_ID, year=None, resolution='1000m' ):
 
-    # path2nc = os.path.join(homedir, 'Data/NERD/data_predictor/data_sector/')
-    path2nc = os.path.join(homedir, 'Data/NERD/dmg095_nc/data_sector/')
 
 
     if resolution == '400m':
         ## load S1 400m dmg
-        # filelist_dmg =  glob.glob( os.path.join(path2nc,'damage', 'data_sector-'+sector_ID+'_dmg_*.nc') )
-        ## update: files of dm095 per sector
-        filelist_dmg =  glob.glob( os.path.join(path2nc,'damage095',resolution, f'dmg_sector-{sector_ID}_*.nc') )
+        filelist_dmg =  glob.glob( os.path.join(path2data,'damage095',resolution, f'dmg_sector-{sector_ID}_*.nc') )
         filelist_dmg = [file for file in filelist_dmg if '1997' not in file]  # make sure 1997 is not included; as not processed at 400m res
         filelist_dmg.sort()
         
     elif resolution == '1000m': 
-        # filelist_dmg =  glob.glob( os.path.join(path2nc,'dmg_downsampled/', 'data_sector-'+sector_ID+'_dmg095_*.nc') )
-        ## update: files of dm095 per sector
-        filelist_dmg =  glob.glob( os.path.join(path2nc,'damage095',resolution, f'dmg_sector-{sector_ID}_*.nc') )
+        filelist_dmg =  glob.glob( os.path.join(path2data,'damage095',resolution, f'dmg_sector-{sector_ID}_*.nc') )
         filelist_dmg.sort()
 
     if year is None: # all years
@@ -203,9 +176,9 @@ def main( sector_ID, year=None, resolution='1000m' ):
     Masks are only provided for Sentinel1 2015-2021 data; as RAMP has data in all tiles.
     ------------------------------------------ '''
 
-    print('--- mask dataset ----')  # os.path.join(path2nc,'nodata', 'data_sector-'+sector_ID+'_nodata_*.nc') )
+    print('--- mask dataset ----')  
     ## locate files
-    mask_filelist = glob.glob( os.path.join(path2nc,'nodata', f'nodata_sector-{sector_ID}_*_400m.nc') ) # masks only avail at 400m
+    mask_filelist = glob.glob( os.path.join(path2data,'nodata', f'nodata_sector-{sector_ID}_*_400m.nc') ) # masks only avail at 400m
     mask_filelist.sort()
     ## retrieve years from filenames
     filenames = [os.path.basename(file) for file in mask_filelist]
