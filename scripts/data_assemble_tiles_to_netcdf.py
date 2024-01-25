@@ -12,6 +12,8 @@ from dask.diagnostics import ProgressBar
 Script to patch and combine geotiffs organised by tiles to pre-defined AOI (in this case, antarctic sectors).
 Data is saved as geotiff and netcdf per sector per year
 Changes can be made to the area of interest
+
+Author: M. Izeboud, Dec/2023, TU Delft
 ---------'''
 
 ''' -----
@@ -81,17 +83,7 @@ ishelf_dict = { '1997':iceshelf_df_1997,
                 '2021':iceshelf_df_2021,
 }
 
-# ## Check if files exsits ; otherwise skip loading and saving
-# varFiles_saved=0
-# for varName in variables_to_save:
-#     nc_filename, already_exists = save_nc_variable(path2data, varName, years,region_ID,  region_sector=roi_type )
-#     if already_exists:
-#         varFiles_saved += 1
-# if varFiles_saved == len(variables_to_save):
-#     print('All variables {} already saved for {} year {}'.format(variables_to_save,region_ID, year))
-#     continue
 
-# if save_var_annual:
 ''' --------------
 Select region/sector and corresponding tilenumbers to export
 
@@ -121,11 +113,8 @@ save_tif = True
 for year in years_list:
     
     for sector_ID in sector_ID_list:
-        if sector_ID == 'WIS' or sector_ID == 'WS': # skip WIS in favor of WIS-a and WIS-b (process in parts)
+        if sector_ID == 'WIS' or sector_ID == 'WS': # skip WIS in favor of WIS-a and WIS-b (process in parts due to memory usage)
             continue 
-        
-        
-        # roi_type = 'sector'
 
         ''' --------------
         Define tileNumbers for selected region
@@ -210,7 +199,6 @@ for year in years_list:
             print(region_data.dims)
             region_data= region_data.isel(band=0).drop('band')
 
-        # print(region_data.dims)#, region_ds_dmg.vars)
 
         ## Small fixes to file
         region_data.astype(float)[varName].rio.write_nodata(np.nan, encoded=True, inplace=True)
