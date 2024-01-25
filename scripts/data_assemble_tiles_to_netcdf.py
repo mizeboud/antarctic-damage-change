@@ -172,13 +172,11 @@ for year in years_list:
                     compat='no_conflicts', #  only values which are not null in both datasets must be equal. The returned dataset then contains the combination of all non-null values
                     chunks={'y':'auto','x':'auto','band':1}, # add chucnking info for dask
                     parallel=True,
-                    # engine='rasterio'
                     ).isel(band=0).drop('band')
                     .transpose('y','x')
                     .rename({'band_data':varName})
         )
 
-        
 
         ''' ## Fill dmg NaN values as 0  '''
         region_data = region_data.where(~np.isnan(region_data),other=0 ) # no-dmg = 0
