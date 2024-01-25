@@ -98,12 +98,6 @@ def parse_cla():
     args = parser.parse_args()
     return args 
 
-def drop_spatial_ref(ds):
-    try:
-        ds = ds.drop('spatial_ref')
-    except:
-        pass
-    return ds 
 
 def setup_iceshelf_df_entry(iceshelf_name, ishelf_region, sector_ID ):
     ishelf_current_year = iceshelf_poly_meas[iceshelf_poly_meas['NAME'] == iceshelf_name].copy()
@@ -157,7 +151,7 @@ def main( sector_ID, year=None, resolution='1000m' ):
     region_ds = (xr.open_mfdataset(filelist_dmg ,
                     combine='nested', concat_dim='time',
                     compat='no_conflicts',
-                    preprocess=drop_spatial_ref)
+                    preprocess=myf.drop_spatial_ref)
             .rio.write_crs(3031,inplace=True)
             .assign_coords(time=year_list) # update year values (y,x,time)
     )
@@ -187,7 +181,7 @@ def main( sector_ID, year=None, resolution='1000m' ):
     region_masks = (xr.open_mfdataset( mask_filelist,
                             combine='nested', concat_dim='time',
                             compat='no_conflicts',
-                            preprocess=drop_spatial_ref,
+                            preprocess=myf.drop_spatial_ref,
                             )
                         .rio.write_crs(3031,inplace=True)
                         .assign_coords(time=mask_years) # update year values (y,x,time)
