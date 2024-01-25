@@ -29,7 +29,7 @@ def image_add_time_band(image):
       # interpretation of the following trend calculation.
 
 
-## DEV:
+
 def add_relorb_slicenum(image):
     relorb_slice = ee.Number(ee.Image(image).get('relativeOrbitNumber_start')).format('%.0f').cat('_').cat(ee.Number(ee.Image(image).get('sliceNumber')).format('%.0f'))
     return image.set('relorb_slice', relorb_slice)
@@ -129,15 +129,9 @@ def export_img_to_GCS(eeImg,bucket,file_name,
         
     if export_geometry is None:
         export_geometry = eeImg.geometry()
-        # eeImg = eeImg.clip(export_geometry)
-    
-        
-    # -- ERODE EDGE of relorb [this is done before inputting the img in this fucntion]
-    # eeImg = erode_relorb_bounds(eeImg)
+
 
     # -- Export the image to Cloud Storage.
-    
-   
     task_im = ee.batch.Export.image.toCloudStorage(
             image = eeImg,# do not export toByte; then NaN mask will be converted to 0
             description = 'export_'+file_name.split('/')[-1],
@@ -152,11 +146,6 @@ def export_img_to_GCS(eeImg,bucket,file_name,
     # -- start tasks at GEE editor
     if start_task:
         task_im.start()
-        # print('Started Export of {} to bucket {}'.format(file_name,bucket) )
-        # print('..Uploading {}'.format(file_name))
-        # status(task_im)
-    # else:
-    #     print('Warning: Export Task not started (set start_task to True).')
               
         
     return task_im
