@@ -5,30 +5,6 @@ import geopandas as gpd
 import rasterio as rio
 
 
-def get_tilelist_region(region_polys, sector_ID, gridTiles=None):
-    ''' This function selects a predefined sector by name ID from the sector-shapefile 'sector_polys'.
-    It returns a list of tileNumbers that intersects that region.
-    These tileNumbers correspond to the number tile_N in local data filenames
-    '''
-    if gridTiles is None:  
-        try:
-            gridTiles_geojson_path = os.path.join('./files/gridTiles_iceShelves_EPSG3031.geojson')
-            print('No gridTiles file specified, reading shapefile to geopandas.Dataframe from: \n {}'.format(gridTiles_geojson_path))
-            gridTiles = gpd.read_file(gridTiles_geojson_path)
-        except:
-            raise ValueError('Couldnt find gridTiles shapefile; provide dataframe')
-
-    # -- select polygon for specified sector
-    region_df = region_polys.loc[region_polys['sector_ID']==sector_ID]
-
-    # -- Overlap polygon with tiles, to know which files to dwonload
-    intersection_gpd = gpd.sjoin(gridTiles, region_df )
-    tileNums_select = intersection_gpd['tileNumber'].values
-    tileNums_select = [int(tileNum) for tileNum in tileNums_select]
-    return tileNums_select
-
-
-
 
 def calc_nominal_strain(vx, vy, length_scale_px=1 ,version2 = None , dx=None ):
     '''Calculate nominal strain rate based on x and y velocity grids (data tiles per year)
@@ -109,96 +85,31 @@ def calc_nominal_strain(vx, vy, length_scale_px=1 ,version2 = None , dx=None ):
         return emax_xr, emin_xr, e_eff, strain_components
 
 
-
-
-
-
-def reproject_match_grid( ref_img_da, img_da , resample_method=rio.enums.Resampling.nearest, nodata_value=np.nan):
-    ''' Match xarray grid of different spatial resolutions. Input should be dataArray'''
-
-    # Expected order: ('time', 'y', 'x')
-    dims = img_da.dims
-    ref_img_da = ref_img_da.transpose('time','y','x') # CRS is alreadyy written .rio.write_crs(3031, inplace=True)
-    img_da = img_da.transpose('time','y','x')
-    
-    # -- reproject (even though same crs) and match grid (extent, resolution and projection)
-    img_repr_match = img_da.rio.reproject_match(ref_img_da,resampling=resample_method,nodata=nodata_value) # need to specify nodata, otherwise fills with (inf) number 1.79769313e+308
-
-    # advised to update coords to make the coordinates the exact same due to tiny differences in the coordinate values due to floating precision
-    img_repr_match = img_repr_match.assign_coords({
-        "y": ref_img_da.y,
-        "x": ref_img_da.x,
-    })
-    
-    return img_repr_match.transpose(*dims) # transpose dimension order back to original
-
-def repeat_static_variable_timeseries( region_ds , varname_to_repeat ):
-    ''' --------------------------------------
-    Repeat temporally static variable (REMA; basalmelt) to even out dataset dimension
-    ------------------------------------------ '''
-    # REMA repeated for every year, to match dataset
-    region_da_rema = region_ds.sel(time=0)[varname_to_repeat].drop('time') # only time slice where REMA has data -- (y,x); need to DROP time because it remains as some sort of passive dimension
-    region_rema_yrs = region_da_rema.expand_dims(dim=dict(time=region_ds.time.values),axis=2) ## the variable is automatically repeated for the new dimension
-
-    # dataset without REMA and rema's time dimension
-    ## region_ds = region_ds.drop_sel(time=0).drop(['rema','basalmelt']) # drops a slice of dimension value but keeps dimension
-    region_ds = region_ds.drop_sel(time=0).drop([varname_to_repeat]) # drops a slice of dimension value but keeps dimension
-
-    ## Put it back into dataset
-    region_ds[varname_to_repeat] = region_rema_yrs
-    ## region_ds['basalmelt'] = region_bmelt_yrs
-
-    return region_ds
-
-
-
-
-def downsample_dataArray_withoutD0( region_ds , ksize=3, boundary_method='pad', downsample_func = 'mean', skipna=None,verbose=True):
-    ''' --------------
-    Downsample data
-    - First fill all dmg=0 values with np.nan. such that these are discarded during downsampling
-    - Then coarsen the netCDF (downsample resolution)
-        - downsampling with median: better suited to omit impact of outliers
-        - downsampling with mean:   'general representation of field'. Yields relatively high values for kernels with predominantly low values - in the case of 'dmg' this is what you'd want.
-        - downsampling with max:    too much attention to outliers within kernel.
-    - Then put dmg=0 back into array (such that when removing 'nan px' from all variables that were clipped to ice shelf polys, these px are retained)
-    - Later on, it might be decided that dmg=0 will still be discarded.
-
-    ksize:              Kernel size (widthxheight) that will be downsampled
-    boundary_method:    How to handle boundary in xr.DataSet.coarsen()
-    downsample_func:    Define if to downsample using kernel mean or median (other not supported yet)
-    --------------'''
-    if verbose:
-        print('..Downsampling data {}x{} pxs'.format(ksize,ksize))
-
-    # Get all dmg variables within array (e.g. 'dmg' and 'dmg095' for updated thresholds)
-    all_dmg_vars = [varname for varname in list(region_ds.data_vars) if 'dmg' in varname]
-    
-    # Fill dmg=0 temporarily with np.nan, so that during downsampling these values are not considered
-    for dmg_var in all_dmg_vars:
-        region_ds[dmg_var] = region_ds[dmg_var].where(region_ds[dmg_var]>0, other=np.nan)
-
-    if downsample_func == 'mean':
-        region_ds_coars  = region_ds.coarsen(x=ksize,y=ksize,boundary=boundary_method).mean() # mean downsampling 
-
-    if downsample_func == 'median':
-        region_ds_coars  = region_ds.coarsen(x=ksize,y=ksize,boundary=boundary_method).median() # median downsampling
-    if downsample_func == 'max':
-        region_ds_coars  = region_ds.coarsen(x=ksize,y=ksize,boundary=boundary_method).max() # max downsampling
-    return region_ds_coars
-
-
 def calculate_velo_strain_features(data_ds, velocity_names=('xvelsurf','yvelsurf'), length_scales=['1px']):
+    ''' Calculate velocity from horizontal vx and vy components, multiple strain components and temporal  change of velocity and strain magnitude.
+    
+    Returns 2 datasets:
+    
+    data_velo_strain    :   contains velocity magnitude 'v' and 'deltaV' (max annual velocity change with smoothened by 3-yrs trailing window)
+    region_ds_roll      :   contains strain components:
+                            - max and min principal strains, emax and emin
+                            - effective strain, e_eff
+                            - longitudonal (elon), transverse (etrans) and shear (eshear) strain
+                            - deltaEmax (max annual change of emax smoothened by 3-yrs trailing window)
+     '''
     var_name_vx, var_name_vy = velocity_names 
 
     ''' --------------
-    Calculate Velocity
+    Calculate velocity
     ------------------ '''
-    # velocity magnitude
+    # # velocity magnitude
     region_da_v = ((data_ds[var_name_vx]**2 + data_ds[var_name_vy]**2)**0.5) # .to_dataset(name='v')
 
     data_ds['v'] = region_da_v
 
+    ''' --------------
+    Calculate Strain
+    ------------------ '''
     # strain on multiple lenthscale -- version2
     for scale_name in length_scales: 
         lscale = int(scale_name.strip('px'))
@@ -253,12 +164,75 @@ def calculate_velo_strain_features(data_ds, velocity_names=('xvelsurf','yvelsurf
 
 
 
+
+def downsample_dataArray_withoutD0( region_ds , ksize=3, boundary_method='pad', downsample_func = 'mean', skipna=None,verbose=True):
+    ''' --------------
+    Downsample data
+    - First fill all dmg=0 values with np.nan. such that these are discarded during downsampling
+    - Then coarsen the netCDF (downsample resolution)
+        - downsampling with median: better suited to omit impact of outliers
+        - downsampling with mean:   'general representation of field'. Yields relatively high values for kernels with predominantly low values - in the case of 'dmg' this is what you'd want.
+        - downsampling with max:    too much attention to outliers within kernel.
+    - Then put dmg=0 back into array (such that when removing 'nan px' from all variables that were clipped to ice shelf polys, these px are retained)
+    - Later on, it might be decided that dmg=0 will still be discarded.
+
+    ksize:              Kernel size (widthxheight) that will be downsampled
+    boundary_method:    How to handle boundary in xr.DataSet.coarsen()
+    downsample_func:    Define if to downsample using kernel mean or median (other not supported yet)
+    --------------'''
+    if verbose:
+        print('..Downsampling data {}x{} pxs'.format(ksize,ksize))
+
+    # Get all dmg variables within array (e.g. 'dmg' and 'dmg095' for updated thresholds)
+    all_dmg_vars = [varname for varname in list(region_ds.data_vars) if 'dmg' in varname]
+    
+    # Fill dmg=0 temporarily with np.nan, so that during downsampling these values are not considered
+    for dmg_var in all_dmg_vars:
+        region_ds[dmg_var] = region_ds[dmg_var].where(region_ds[dmg_var]>0, other=np.nan)
+
+    if downsample_func == 'mean':
+        region_ds_coars  = region_ds.coarsen(x=ksize,y=ksize,boundary=boundary_method).mean() # mean downsampling 
+
+    if downsample_func == 'median':
+        region_ds_coars  = region_ds.coarsen(x=ksize,y=ksize,boundary=boundary_method).median() # median downsampling
+    if downsample_func == 'max':
+        region_ds_coars  = region_ds.coarsen(x=ksize,y=ksize,boundary=boundary_method).max() # max downsampling
+    return region_ds_coars
+
+
+
+
 def drop_spatial_ref(ds):
     try:
         ds = ds.drop('spatial_ref')
     except:
         pass
     return ds 
+
+
+
+
+def get_tilelist_region(region_polys, sector_ID, gridTiles=None):
+    ''' This function selects a predefined sector by name ID from the sector-shapefile 'sector_polys'.
+    It returns a list of tileNumbers that intersects that region.
+    These tileNumbers correspond to the number tile_N in local data filenames
+    '''
+    if gridTiles is None:  
+        try:
+            gridTiles_geojson_path = os.path.join('./files/gridTiles_iceShelves_EPSG3031.geojson')
+            print('No gridTiles file specified, reading shapefile to geopandas.Dataframe from: \n {}'.format(gridTiles_geojson_path))
+            gridTiles = gpd.read_file(gridTiles_geojson_path)
+        except:
+            raise ValueError('Couldnt find gridTiles shapefile; provide dataframe')
+
+    # -- select polygon for specified sector
+    region_df = region_polys.loc[region_polys['sector_ID']==sector_ID]
+
+    # -- Overlap polygon with tiles, to know which files to dwonload
+    intersection_gpd = gpd.sjoin(gridTiles, region_df )
+    tileNums_select = intersection_gpd['tileNumber'].values
+    tileNums_select = [int(tileNum) for tileNum in tileNums_select]
+    return tileNums_select
 
 
 
@@ -289,6 +263,27 @@ def make_ais_grid( grid_res):
     return ais_dummy 
 
 
+def repeat_static_variable_timeseries( region_ds , varname_to_repeat ):
+    ''' --------------------------------------
+    Repeat temporally static variable (REMA; basalmelt) to even out dataset dimension
+    ------------------------------------------ '''
+    # REMA repeated for every year, to match dataset
+    region_da_rema = region_ds.sel(time=0)[varname_to_repeat].drop('time') # only time slice where REMA has data -- (y,x); need to DROP time because it remains as some sort of passive dimension
+    region_rema_yrs = region_da_rema.expand_dims(dim=dict(time=region_ds.time.values),axis=2) ## the variable is automatically repeated for the new dimension
+
+    # dataset without REMA and rema's time dimension
+    ## region_ds = region_ds.drop_sel(time=0).drop(['rema','basalmelt']) # drops a slice of dimension value but keeps dimension
+    region_ds = region_ds.drop_sel(time=0).drop([varname_to_repeat]) # drops a slice of dimension value but keeps dimension
+
+    ## Put it back into dataset
+    region_ds[varname_to_repeat] = region_rema_yrs
+    ## region_ds['basalmelt'] = region_bmelt_yrs
+
+    return region_ds
+
+
+
+
 def reprj_regions_to_ais_grid(ais_da, img_da):
     img_da.rio.write_crs(3031, inplace=True)
     
@@ -302,3 +297,24 @@ def reprj_regions_to_ais_grid(ais_da, img_da):
     })
 
     return img_repr_match
+
+
+
+def reproject_match_grid( ref_img_da, img_da , resample_method=rio.enums.Resampling.nearest, nodata_value=np.nan):
+    ''' Match xarray grid of different spatial resolutions. Input should be dataArray'''
+
+    # Expected order: ('time', 'y', 'x')
+    dims = img_da.dims
+    ref_img_da = ref_img_da.transpose('time','y','x') # CRS is alreadyy written .rio.write_crs(3031, inplace=True)
+    img_da = img_da.transpose('time','y','x')
+    
+    # -- reproject (even though same crs) and match grid (extent, resolution and projection)
+    img_repr_match = img_da.rio.reproject_match(ref_img_da,resampling=resample_method,nodata=nodata_value) # need to specify nodata, otherwise fills with (inf) number 1.79769313e+308
+
+    # advised to update coords to make the coordinates the exact same due to tiny differences in the coordinate values due to floating precision
+    img_repr_match = img_repr_match.assign_coords({
+        "y": ref_img_da.y,
+        "x": ref_img_da.x,
+    })
+    
+    return img_repr_match.transpose(*dims) # transpose dimension order back to original
