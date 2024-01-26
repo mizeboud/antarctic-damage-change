@@ -48,56 +48,7 @@ import re
 ''' ---------------------------
 Functions
 -------------------------------'''
-# Perform spatial CV
-# def train_validate_model_spatial(cluster, xvars, yvar, fold_type,
-#                                 rf_n = 50, rf_max_depth=None):
-#     # For current fold, split train/test                                
-#     training_data = data_pxs_sample[data_pxs_sample[fold_type] != cluster]
-#     validation_data = data_pxs_sample[data_pxs_sample[fold_type] == cluster]
 
-#     # Random Forest model
-#     # rf = RandomForestRegressor(n_estimators=300, n_jobs=-1) # cluster-loop (100s of clusters) with N=10.000 and res=9x9 took 5.5 hours. Will probably be faster for smaller n_estim 
-#     rf = RandomForestRegressor( n_estimators= rf_n,  # # region-loop (3) with N=1000 , res 5x5 and n_est=50 takes 2 seconds.
-#                                 n_jobs = -1,
-#                                 max_depth = rf_max_depth,
-#                                 random_state = 42) 
-#     rf.fit(training_data[xvars], training_data[yvar])
-
-#     # Prediction
-#     pred_obj = rf.predict(validation_data[xvars])
-#     pred_test = pd.DataFrame({
-#         "cluster_idx": validation_data[fold_type],
-#         "dmg": validation_data[yvar],
-#         "predRF": pred_obj
-#     })
-
-#     return pred_test
-
-
-# Perform random CV
-# def train_validate_model(train_idx, test_idx, xvars, yvar,
-#                             rf_n = 50, rf_max_depth=None):
-                            
-#     training_data = data_pxs_sample.iloc[train_idx]
-#     validation_data = data_pxs_sample.iloc[test_idx]
-
-#     # Random Forest model
-#     rf = RandomForestRegressor( n_estimators = rf_n, 
-#                                 n_jobs = -1,
-#                                 max_depth = rf_max_depth,
-#                                 random_state = 42)
-                                
-#     rf.fit(training_data[xvars], training_data[yvar])
-
-#     # Prediction
-#     pred_obj = rf.predict(validation_data[xvars])
-#     pred_test = pd.DataFrame({
-#         "cluster_idx": validation_data[fold_type],
-#         "dmg": validation_data[yvar],
-#         "predRF": pred_obj
-#     })
-
-#     return pred_test
 
 
 def load_config(configFile):
@@ -201,10 +152,12 @@ def load_config(configFile):
 def load_nc_sector_years( path2data, sector_ID, year_list=None, varName=None ):
     ''' Load all/selected annual netCDF files of a variable for one sector'''
 
+    ## get filelist of variable for current sector
     filelist_dir =  glob.glob( os.path.join(path2data, f'*_sector-{sector_ID}_*.nc') )
     filelist_var_all = [file for file in filelist_dir if varName in file]
     filelist_var_all.sort()
 
+    ## select files for all/specified years 
     if year_list is None: # all years
         ## load list of files
         filenames = [os.path.basename(file) for file in filelist_var_all]
@@ -227,7 +180,6 @@ def load_nc_sector_years( path2data, sector_ID, year_list=None, varName=None ):
         region_ds = (xr.open_mfdataset(filelist_var ,
                     combine='nested', concat_dim='time',
                     compat='no_conflicts',
-                    # compat='broadcast_equals', #  all values must be equal when variables are broadcast against each other to ensure common dimensions.
                     preprocess=myf.drop_spatial_ref)
             .rio.write_crs(3031,inplace=True)
             .assign_coords(time=year_list) # update year values (y,x,time)
@@ -344,59 +296,17 @@ def main(configFile):
                                             boundary_method='pad',downsample_func='mean', skipna=False)
             new_res = ksize*400
             print('.. resolution {}m downsampled to {}m'.format(dx, new_res))
-        
+
         ''' ------------
-        Calculate strain for (downsampled) data
+        Calculate velocity and strain for (downsampled) data
         ---------------- '''
-        
-        for scale_name in length_scales: #[1px, 5px, 15px]:
-            
-            lscale = int(scale_name.strip('px'))
+        # calculate velocity, strain components and temporal velo/strain change
+        data_velo_strain, region_ds_roll = myf.calculate_velo_strain_features(region_ds, 
+                                                    velocity_names=('vx','vy'), 
+                                                    length_scales=length_scales)
+        region_ds = xr.merge([region_ds, data_velo_strain])
+        region_ds = xr.merge([region_ds, region_ds_roll])
 
-            # calculate
-            emax,  emin, e_eff, strain_components  = myf.calc_nominal_strain(region_ds['vx'], region_ds['vy'], 
-                                                                             length_scale_px=lscale , 
-                                                                             version2 = True, dx=new_res)
-            elon,  etrans,  eshear  = strain_components
-            
-            # make dataset
-            region_ds_strain =  [   emax.to_dataset( name='emax_'+str(lscale)+'px') , 
-                                    emin.to_dataset( name='emin_'+str(lscale)+'px') , 
-                                    e_eff.to_dataset(name='e_eff_'+str(lscale)+'px') , 
-                                    elon.to_dataset( name='elon_'+str(lscale)+'px') , 
-                                    etrans.to_dataset(name='etrans_'+str(lscale)+'px') , 
-                                    eshear.to_dataset(name='eshear_'+str(lscale)+'px') 
-            ]
-            region_ds_strain = xr.merge(region_ds_strain)
-            print('.. calculated strain variables ', list(region_ds_strain.keys()) )
-
-            ## add to dataset
-            region_ds = xr.merge([region_ds, region_ds_strain])
-
-
-            ''' ------------
-            Calculate temporal values 
-            ---------------- '''
-
-            ## Calculate difference per year
-            ## region_ds_diff = region_ds.drop_sel(time=[0])[['emax_'+scale_name, 'v']].diff(dim='time').rename({'emax_'+scale_name:'deltaEmax','v': 'deltaV'})
-            region_ds_diff = region_ds[['emax_'+scale_name, 'v']].diff(dim='time').rename({'emax_'+scale_name:'deltaEmax','v': 'deltaV'})
-            region_ds_diff # [2016,2017,2018]; first timestep is dropped
-
-            ## Get rolling-max diff of past 3 years. Set center=False so the window is a trailing window i-2 to i
-            ## NB: with min_periods=1, the first year will have the same values as itself
-            region_ds_roll = region_ds_diff[['deltaEmax','deltaV']].rolling(time=3, center=False, min_periods=1).max().rename(
-                                    {'deltaEmax':'dEmax_'+scale_name,
-                                    # 'deltaV':'dV_'+scale_name
-                                    }) 
-
-            ## Fill the first temporal-difference timestep (2015) with a value (so that this time slice doesnt get dropped later on)
-            ## NB: the fill value for dt_2014-15 with a copy of dt_2015-2016, as filling with 0 would create  artificial data
-            da_delta_2015_new = region_ds_roll.sel(time=2016).assign_coords(time=2015) # select 2016 from dataset and assing it as time=2015
-            region_ds_roll = xr.concat([da_delta_2015_new, region_ds_roll],dim='time') # replace it with the copied value
-
-            ## add to dataset
-            region_ds = xr.merge([region_ds, region_ds_roll])
 
         ''' --------------------------------------
         Drop irrelevant variables from dataset

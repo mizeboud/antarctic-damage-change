@@ -155,56 +155,13 @@ def load_ismip_experiment(filelist, length_scales,velocity_varnames=('xvelsurf',
         ''' --------------
         Calculate features
         ------------------ '''
-        # velocity magnitude
-        region_da_v = ((data_ismip_ds[var_name_vx]**2 + data_ismip_ds[var_name_vy]**2)**0.5) # .to_dataset(name='v')
-
-        data_ismip_ds['v'] = region_da_v
-
-        # strain on multiple lenthscale -- version2
-        for scale_name in length_scales: 
-            lscale = int(scale_name.strip('px'))
-
-            # calculate
-            emax,  emin, e_eff, strain_components  = myf.calc_nominal_strain(data_ismip_ds[var_name_vx], data_ismip_ds[var_name_vy], 
-                                                                                length_scale_px=lscale , 
-                                                                                version2 = True)
-            elon,  etrans,  eshear  = strain_components
-            
-            # make dataset
-            region_ds_strain =  [   emax.to_dataset( name='emax_'+str(lscale)+'px') , 
-                                    emin.to_dataset( name='emin_'+str(lscale)+'px') , 
-                                    e_eff.to_dataset(name='e_eff_'+str(lscale)+'px') , 
-                                    elon.to_dataset( name='elon_'+str(lscale)+'px') , 
-                                    etrans.to_dataset(name='etrans_'+str(lscale)+'px') , 
-                                    eshear.to_dataset(name='eshear_'+str(lscale)+'px') 
-            ]
-            region_ds_strain = xr.merge(region_ds_strain)
-            print('.. calculated strain variables ', list(region_ds_strain.keys()) )
-
-            ## add to dataset
-            data_ismip_ds = xr.merge([data_ismip_ds, region_ds_strain])
-
-
-            ''' ------------
-            Calculate temporal values 
-            ---------------- '''
-
-            ## Calculate difference per year (first year is dropped)
-            region_ds_diff = data_ismip_ds[['emax_'+scale_name, 'v']].diff(dim='time').rename({'emax_'+scale_name:'deltaEmax','v': 'deltaV'})
-            # print(region_ds_diff)
-
-            ## Get rolling-max diff of past 3 years. Set center=False so the window is a trailing window i-2 to i
-            ## NB: with min_periods=1, the first year will have the same values as itself
-            region_ds_roll = region_ds_diff[['deltaEmax','deltaV']].rolling(time=3, 
-                                    center=False, min_periods=1).max().rename(
-                                    {'deltaEmax':'dEmax_'+scale_name,
-                                    # 'deltaV':'dV_'+scale_name
-                                    }) 
-
-            ## add to dataset
-            data_ismip_ds = xr.merge([data_ismip_ds, region_ds_roll])
-
-
+        
+        # calculate velocity, strain components and temporal velo/strain change
+        data_velo_strain, region_ds_roll = myf.calculate_velo_strain_features(data_ismip_ds, 
+                                                    velocity_names=(var_name_vx,var_name_vy), 
+                                                    length_scales=length_scales)
+        data_ismip_ds = xr.merge([data_ismip_ds, data_velo_strain])
+        data_ismip_ds = xr.merge([data_ismip_ds, region_ds_roll])
 
         ## set crs
         data_ismip_ds.rio.write_crs(3031,inplace=True)
