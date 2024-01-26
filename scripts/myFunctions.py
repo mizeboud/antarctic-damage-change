@@ -403,6 +403,13 @@ def make_regular_grid_for_ds(ds, grid_res):
     return grid_dummy
 
 
+def drop_spatial_ref(ds):
+    try:
+        ds = ds.drop('spatial_ref')
+    except:
+        pass
+    return ds 
+
 def load_nc_obs_data( path2data, region_ID, varname=None, parts=['part1'],verbose=True):
     ''' ----------------------
     Load data: netCDFs per region, per variable
