@@ -715,6 +715,7 @@ def main(configFile):
         # - to narrow down hyperparameter searchgrid 
         --------------------------------------------------------------'''
         start_t = time.time()
+        fid = 'randomSearch'
 
         # see how many combi's there are
         n_candidates=1 # initialise count
@@ -755,6 +756,7 @@ def main(configFile):
         --------------------------------------------------------------'''
         start_t = time.time()
         print('--\n Perform GridSearchCV..')
+        fid = 'gridSearch'
 
         rf_Search = GridSearchCV(    estimator = model, 
                                         param_grid = space, 
@@ -791,8 +793,8 @@ def main(configFile):
     rf_Search_best_estimator = rf_Search.best_estimator_
 
     ## Save esitmator
-    efname = 'RF_bestEstimator_{}'.format(ts)
-    print('Saving randomSearch bestEstimator to {}'.format(efname) )
+    efname = 'RF_bestEstimator_{}_{}'.format(fid,ts)
+    print('Saving bestEstimator to {}'.format(efname) )
     try:
         dump(rf_Search_best_estimator, os.path.join(path2save,efname + ".joblib"))
     except OSError:
