@@ -1,39 +1,11 @@
 # Script that trains&test RandomForest predictor and evaluates using spatial k-fold CrossValidation
 
 import os
-import rioxarray as rioxr
 import geopandas as gpd
-# import matplotlib.pyplot as plt
 import numpy as np
-# import glob
 import xarray as xr
-# import matplotlib.patches as mpatches
-
-import rasterio as rio
 import pandas as pd 
 
-# import multiprocessing
-from sklearn.ensemble import RandomForestRegressor
-# from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error, mean_tweedie_deviance
-from joblib import Parallel, delayed
-# from sklearn.model_selection import KFold
-
-
-from pprint import pprint
-from sklearn.model_selection import RandomizedSearchCV, GridSearchCV
-from sklearn.model_selection import GroupKFold
-from joblib import dump, load
-
-from imblearn.over_sampling import RandomOverSampler
-from imblearn.under_sampling import RandomUnderSampler
-
-# Import user functions
-import myFunctions as myf 
-
-# from sklearn.model_selection import cross_validate
-# from sklearn.model_selection import cross_val_predict
-# from sklearn.metrics import PredictionErrorDisplay # needs sklearn >1.1.1 (I had 1.1.1 and updated to 1.2.2)
 import time
 import datetime
 import configparser
@@ -42,8 +14,16 @@ import ast
 import sys
 import glob
 import dask
-# import warnings
 import re
+from pprint import pprint
+
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import RandomizedSearchCV, GridSearchCV, GroupKFold
+from joblib import dump, load
+
+# Import user functions
+import myFunctions as myf 
+
 
 ''' ---------------------------
 Functions
