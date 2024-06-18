@@ -6,7 +6,15 @@
                   "10px": 0.02
               }
           },
-          "long_name": "RAMP Radarsat"
+          "long_name": "RAMP Radarsat amm"
+      },
+      "RAMP_mamm": {
+          "img_res": {
+              "100": {
+                  "10px": 0.029
+              }
+          },
+          "long_name": "RAMP Radarsat mamm"
       },
       "S1": {
           "img_res": {
@@ -30,6 +38,14 @@
           },
           "long_name": "RAMP Radarsat"
       },
+      "RAMP_mamm": {
+          "img_res": {
+              "100": {
+                  "10px": 0.023
+              }
+          },
+          "long_name": "RAMP Radarsat mamm"
+      },
       "S1": {
           "img_res": {
               "40": {
@@ -51,6 +67,14 @@
             }
         },
         "long_name": "RAMP Radarsat"
+    },
+    "RAMP_mamm": {
+        "img_res": {
+            "100": {
+                "10px": 0.010
+            }
+        },
+        "long_name": "RAMP Radarsat mamm"
     },
     "S1": {
         "img_res": {
