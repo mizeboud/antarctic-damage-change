@@ -26,6 +26,7 @@ path2iceshelves = os.path.join(homedir,'Data/Greene2022_AIS_coastlines/shapefile
 iceshelf_path_meas = os.path.join(homedir, 'QGis/Quantarctica/Quantarctica3/Glaciology/MEaSUREs Antarctic Boundaries/IceShelf/IceShelf_Antarctica_v02.shp')
 sector_path = os.path.join(homedir, 'QGis/data_NeRD/AIS_outline_sectors.shp')
 
+
 ''' --------------
 Get Shapefiles 
 ------------------ '''
@@ -124,6 +125,9 @@ def setup_iceshelf_df_entry(iceshelf_name, ishelf_region, sector_ID ):
 
 def main( sector_ID, year=None, resolution='1000m' ):
 
+    # Path to save dataframe
+    # path2save = os.path.join(path2data,'aggregated_dmg_per_iceshelf_annual')
+    path2save = os.path.join(homedir, 'Data/NERD/dmg095_nc/aggregated/')
 
 
     if resolution == '400m':
@@ -172,7 +176,9 @@ def main( sector_ID, year=None, resolution='1000m' ):
 
     print('--- mask dataset ----')  
     ## locate files
-    mask_filelist = glob.glob( os.path.join(path2data,'nodata', f'nodata_sector-{sector_ID}_*_400m.nc') ) # masks only avail at 400m
+    # mask_filelist = glob.glob( os.path.join(path2data,'nodata', f'nodata_sector-{sector_ID}_*_400m.nc') ) # masks only avail at 400m
+    # update: read geotiff due to projection erorr in netcdf of 2015
+    mask_filelist = glob.glob( os.path.join(path2data,'nodata','geotiff', f'nodata_sector-{sector_ID}_*_400m.tif') )
     mask_filelist.sort()
     ## retrieve years from filenames
     filenames = [os.path.basename(file) for file in mask_filelist]
@@ -186,7 +192,8 @@ def main( sector_ID, year=None, resolution='1000m' ):
                         .rio.write_crs(3031,inplace=True)
                         .assign_coords(time=mask_years) # update year values (y,x,time)
     ) 
-    
+    region_masks = region_masks.rename({'band_data':'nodata'}).isel(band=0) # fix some stuff when reading from tiff instead of netcdf
+
     ## Resample mask to same grid as dmg 
     # -- for masks, resampling does something weird wth coords. Can only coontinue with dataArray insteaad of dataSet
     region_masks = myf.reproject_match_grid(region_ds[dmg_type], region_masks['nodata'])
@@ -217,7 +224,6 @@ def main( sector_ID, year=None, resolution='1000m' ):
     # If you want to mask only the areas where all S1-years have nodata, use  sum(mask) == ymax ;
     # If you want to mask all areas where any S1-year has nodata: the sum(mask) == 0
     ------------------------------------------ '''
-    save_subdir = ''
     
     ## region_years_masked = []
     ## for year in year_list:
@@ -231,12 +237,14 @@ def main( sector_ID, year=None, resolution='1000m' ):
     
     # If you want to mask only the areas where all S1-years have nodata, use  sum(mask) == ymax ;
     # If you want to mask all areas where any S1-year has nodata: the sum(mask) == 0
-    count_nodata_px = np.isnan(data_available_year).sum(dim='time') # if the mask has value 0 it means VALID data (counter intuitive, i'm sorry)
+    
+    # count_nodata_px = np.isnan(data_available_year).sum(dim='time') # if the mask has value 0 it means VALID data (counter intuitive, i'm sorry)
+    count_nodata_px = (region_masks).sum(dim='time') ## count > 0 if there is any year that has nodata. count==0 means all years have VALID data
+
     region_ds = region_ds.where( count_nodata_px == 0 )
     
 
 
-    # raise RuntimeError
     
     ''' --------------------------------------
     Fill/interpolate annual nodata:
@@ -250,9 +258,10 @@ def main( sector_ID, year=None, resolution='1000m' ):
     ------------------------------------------ '''
     
     ''' 1. Fill annual nodata areas with a dstinctive value
-        By using count_nodata_px < ymax, all instances of a px having nodata for a certain year are captured '''
-    region_ds =  region_ds.where( count_nodata_px < ymax , -999) # mask and fill in 1 step; 
-    
+        By using count_nodata_px < ymax, all instances of a px having nodata for a certain year are captured
+        UPDATE: oops should be count_nodata_px > 0 '''
+    ## region_ds =  region_ds.where( count_nodata_px < ymax , -999) # mask and fill in 1 step; 
+    region_ds =  region_ds.where( count_nodata_px == 0 , -999) # mask and fill in 1 step; 
 
     ''' 2. Interpolate NaN values of Sentinel-1 data (temporal)
     Update: changed order. First filled all-yr-nodata with -999, then interpolate (so interpolation is presumably faster)'''
@@ -269,15 +278,15 @@ def main( sector_ID, year=None, resolution='1000m' ):
         save_subdir = '_aggregated_with_nodataMask_annual_interpol'
         end = time.time()
         print(".. done with interpolation " + str( np.round((end - start)/60 ,1) ) + 'min')
-
+    else:
+       save_subdir = '_aggregated_with_nodataMask_any/_perSector/' 
     # raise RuntimeError('stop -dev')
 
     ''' --------------------------------------
     SELECT ICESHELVES IN REGION - per year
     ------------------------------------------ '''
 
-    # Path to save
-    path2save = os.path.join(path2data,'aggregated_dmg_per_iceshelf_annual', save_subdir)
+    path2save = os.path.join(path2save, save_subdir)
     
     # 1 Get sector polygon
     region_polygon = sector_poly[sector_poly['sector_ID'] == sector_ID]
@@ -352,7 +361,8 @@ def main( sector_ID, year=None, resolution='1000m' ):
 
             ## Sum or count values
             ishelf_sum = var_ds_stack.where(var_ds_stack>0).sum(dim='samples',skipna=True) # time series of spatial sum
-            ishelf_Npx = var_ds_stack.count(dim='samples')  # px count in current ice shelf (only pxs with valid value)
+            # ishelf_Npx = var_ds_stack.count(dim='samples')  # px count in current ice shelf (only pxs with valid value)
+            ishelf_Npx = var_ds_stack.where(var_ds_stack!=-999).count(dim='samples') # count valid pxs, defined by !=-999 value (all NaN pxs were already dropped before)
             count_D   = var_ds_stack.where(var_ds_stack>0 ).count(dim='samples') # count damaged pixels
             count_noD = var_ds_stack.where(var_ds_stack==0 ).count(dim='samples') # count no-damaged pixels
             count_nan = var_ds_stack.where(var_ds_stack==-999 ).count(dim='samples') # cound nodata pixels
