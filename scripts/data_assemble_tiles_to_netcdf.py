@@ -95,7 +95,7 @@ Variables to save:
 
 # years_list = ['1997']
 years_list = ['2015','2016','2017','2018','2019','2020','2021']
-years_list = ['2021']
+# years_list = ['2019','2020','2021']
 
 
 tilepath_dmg = os.path.join(homedir,'Data/S1_SAR/tiles/dmg_tiled/dmg095/') # DMG S1 annual
@@ -103,11 +103,12 @@ tilepath_dmg = os.path.join(homedir,'Data/S1_SAR/tiles/dmg_tiled/dmg095/') # DMG
 # tilepath_dmg = os.path.join(homedir,'Data/RAMP/RAMP_tiled_mamm/dmg095_tiled/') # DMG RAMP 2000
 
 tilepath_rema = os.path.join(homedir,'Data/REMA/tiles/') # rema
-
 tilepath_velo = os.path.join(homedir,'Data/ITS_LIVE/tiles/velocity/') # velocity annual
 
-variables_to_save = ['dmg','rema']
-paths2variables = [tilepath_dmg,tilepath_rema]
+variables_to_save = ['dmg']
+paths2variables = [tilepath_dmg]
+# variables_to_save = ['rema']
+# paths2variables = [tilepath_rema]; years_list = ['0000']
 # variables_to_save = ['vx','vy']
 # paths2variables = [tilepath_velo,tilepath_velo]
 
@@ -118,158 +119,159 @@ save_nc = True
 # set directory to save output
 path2save = os.path.join(homedir,'Data/NERD/data_predictor/data_sector/') # save dir
 
-# for varName, tilepath_in in zip(variables_to_save,paths2variables):
-varName = 'dmg' ; tilepath_in = tilepath_dmg
-for year in years_list:
-    res='400m' # default
-    if varName == 'dmg-25px':
-        region_data = region_data.rename({'dmg-25px':'dmg'})
-        res='1000m'
-    if int(year) == 1997 or int(year) == 2000:
-        res='1000m'
-        
-    if int(year) < 2015: 
-        year_subdir=''
-    else:
-        if 'dmg' in varName:
-            year_subdir = f'{year}-SON'
-        elif 'v' in varName:
-            year_subdir = year
-        else: 
+# varName = 'dmg' ; tilepath_in = tilepath_dmg
+for varName, tilepath_in in zip(variables_to_save,paths2variables):
+    for year in years_list:
+        res='400m' # default
+        if varName == 'dmg-25px':
+            region_data = region_data.rename({'dmg-25px':'dmg'})
+            res='1000m'
+        if int(year) == 1997 or int(year) == 2000:
+            res='1000m'
+            
+        if int(year) < 2015: 
             year_subdir=''
-
-    for sector_ID in sector_ID_list:
-
-        ### Process Weddell Sea sector in 2parts or single part || only required for velocity variables
-        # if any( [var in ['vx','vy'] for var in variables_to_save]): 
-        if varName in ['vx','vy']:
-            if 'EIS' in sector_ID or 'WIS' in sector_ID or 'WS' in sector_ID: 
-                if not '-' in sector_ID:
-                    print('Skip EIS/WIS/WS large-sector:', sector_ID)
-                    continue 
-        elif 'WIS' in sector_ID:
-            if sector_ID not in ['WIS-a','WIS-b']:
-                print('Skipping {} - Need to process WIS in A and B part (netcdf projction error otherwise)'.format(sector_ID))
-                continue
         else:
-            if '-' in sector_ID:
-                print('Processing full sectors; skip part-sector ',sector_ID)
-                continue   
+            if 'dmg' in varName:
+                year_subdir = f'{year}-SON'
+            elif 'v' in varName:
+                year_subdir = year
+            else: 
+                year_subdir=''
 
-        ## Make filename to save 
-        # nc_base= 'data_sector-' + sector_ID + '_'+varName
-        nc_filename = f'data_sector-{sector_ID}_{varName}_{year}.nc'
+        for sector_ID in sector_ID_list[-3:]:
 
-        ## Check if variable file already exsts
-        if os.path.isfile( os.path.join( path2save, nc_filename ) ):
-            print('Variable {} already saved for {} year {}'.format(varName,sector_ID, year))
-            continue
+            ### Process Weddell Sea sector in 2parts or single part || only required for velocity variables
+            # if any( [var in ['vx','vy'] for var in variables_to_save]): 
+            if varName in ['vx','vy']:
+                if 'EIS' in sector_ID or 'WIS' in sector_ID or 'WS' in sector_ID: 
+                    if not '-' in sector_ID:
+                        print('Skip EIS/WIS/WS large-sector:', sector_ID)
+                        continue 
+            elif 'WIS' in sector_ID or 'WS' in sector_ID:
+                if sector_ID not in ['WIS-a','WIS-b','WS-a','WS-b']:
+                    print('Skipping {} - Need to process WIS in A and B part (netcdf projction error otherwise)'.format(sector_ID))
+                    continue
+            else:
+                if '-' in sector_ID:
+                    print('Processing full sectors; skip part-sector ',sector_ID)
+                    continue   
 
-        ''' --------------
-        Define tileNumbers for selected region
-        ------------------ ''' 
-        ## select tiles
-        tileNums_select = myf.get_tilelist_region(sector_poly, sector_ID, gridTiles=gridTiles)
+            ## Make filename to save 
+            # nc_base= 'data_sector-' + sector_ID + '_'+varName
+            nc_filename = f'data_sector-{sector_ID}_{varName}_{year}.nc'
 
-        # Skip some tiles of FR and ROSS iceshelves that have nodata for S1 observations
-        if not varName == 'nodata':
-            tileNums_skip = [130,131,146,147,148,158,159,160,167,168,169, 170, 171,177,178,179,180,187,188,189,190,196,197,198,206,207,217,218] # for RV
-            tileNums_skip = tileNums_skip + [62,63,70,71,72,78,79,80,86,87,88,89,95,96,97,98,105,106,107,108,115,116,117,118,132,133,134,135,136,137,138,149,150] # for FR
-            tileNums_select = [tileNum for tileNum in tileNums_select if tileNum not in tileNums_skip]
+            ## Check if variable file already exsts
+            if os.path.isfile( os.path.join( path2save, nc_filename ) ):
+                print('Variable {} already saved for {} year {}'.format(varName,sector_ID, year))
+                continue
 
-        print('--- \nSelected {} sector; {} tiles'.format(sector_ID, len(tileNums_select)))
+            ''' --------------
+            Define tileNumbers for selected region
+            ------------------ ''' 
+            ## select tiles
+            tileNums_select = myf.get_tilelist_region(sector_poly, sector_ID, gridTiles=gridTiles)
 
+            # Skip some tiles of FR and ROSS iceshelves that have nodata for S1 observations
+            if not varName == 'nodata':
+                tileNums_skip = [130,131,146,147,148,158,159,160,167,168,169, 170, 171,177,178,179,180,187,188,189,190,196,197,198,206,207,217,218] # for RV
+                tileNums_skip = tileNums_skip + [62,63,70,71,72,78,79,80,86,87,88,89,95,96,97,98,105,106,107,108,115,116,117,118,132,133,134,135,136,137,138,149,150] # for FR
+                tileNums_select = [tileNum for tileNum in tileNums_select if tileNum not in tileNums_skip]
 
-        print(f'.. loading data for {year}; {varName}')
-
-        
-        
-        
-        ''' --------------
-        Load data
-        ------------------ ''' 
-
-        ## get all files in directory 
-        # year_filelist = os.listdir(os.path.join(tilepath_in,year_subdir ))
-        year_filelist = glob.glob(os.path.join(tilepath_in,year_subdir,'*.tif' ))
-        year_filelist.sort()
-
-        ## select tiles in region
-        fnames_region = [fname for fname in year_filelist if int(fname.split('.')[0].split('tile_')[1]) in tileNums_select]
-        filelist_region  = [ os.path.join(tilepath_in,year_subdir, fname) for fname in fnames_region ]
-
-        if len(filelist_region) != len(tileNums_select):
-            raise RuntimeError('Expected the same number of tiles({})/files({}) for sector {}'.format(len(tileNums_select),len(filelist_region),sector_ID))
-
-        region_data = (xr.open_mfdataset( filelist_region,  
-                    combine="nested", decode_times=False,
-                    data_vars='minimal', 
-                    coords= 'minimal', 
-                    compat='no_conflicts', #  only values which are not null in both datasets must be equal. The returned dataset then contains the combination of all non-null values
-                    chunks={'y':'auto','x':'auto','band':1}, # add chucnking info for dask
-                    parallel=True,
-                    ).isel(band=0).drop('band')
-                    .transpose('y','x')
-                    .rename({'band_data':varName})
-        )
-
-        print(f'.. loaded dataset {region_data.dims};')
-
-        ''' ## Fill dmg NaN values as 0  '''
-        if 'dmg' in varName:
-            region_data = region_data.where(~np.isnan(region_data),other=0 ) # no-dmg = 0
-            path2save = os.path.join(path2save,'damage095')
-
-        ''' ## Set rema values < 0 to NaN '''
-        if 'rema' in varName:
-            region_data = region_data.where(region_data['rema']>0,np.nan) # rema: set data<0 to NaN:
-            # save_nc_variable( path2data, 'rema', years,region_ID,  region_ds_rema, region_sector=roi_type)
-        
-        ''' ## Resample velocity of 120/240m to same grid as dmg maps'''
-        if 'vx' in varName or 'vy' in varName:
-            # load single year of dmg data as reference grid for current sector
-            # region_ds_dmg  = myf.load_tiles_region_multiyear(  tilepath_dmg, tileNums_select , years_to_load=['2021'] , varname='dmg' )
-            dmg_file = os.path.join(path2save, 'damage095','data_sector-{}_dmg_2021.nc'.format(sector_ID))
-            region_ds_dmg = xr.open_dataset(dmg_file)
-
-            # velocity is in 240m resolution, other data is 400m resolution --> resample grid.
-            region_data = myf.reproject_match_grid( region_ds_dmg['dmg'] ,  region_data[varName]).to_dataset() # use dmg as reference grid
-
-        ''' --------------------------------------
-        Small fixes to data for netcdf/tiff saving
-        ------------------------------------------ '''
-        try:
-            region_data = region_data.drop('spatial_ref')
-        except: pass
-        try:
-            del region_data[varName].attrs['grid_mapping']
-        except: pass
-
-        if not region_data.rio.crs:
-            # print('.. setting CRS to 3031')
-            region_data.rio.write_crs(3031,inplace=True)
-        
-        ## Small fixes to file
-        region_data.astype(float)[varName].rio.write_nodata(np.nan, encoded=True, inplace=True)
-        # reorder dimensions ( need (y,x) without 3rd time dimension to save to netCDF that QGis can read)
-        # data_da = region_data[varName].transpose('y','x')
+            print('--- \nSelected {} sector; {} tiles'.format(sector_ID, len(tileNums_select)))
 
 
-        ''' --------------------------------------
-        Save netCDF/GeoTIFF
-        ------------------------------------------ '''
+            print(f'.. loading data for {year}; {varName}')
 
-        
-        if save_nc:
-            if not os.path.isfile( os.path.join( path2save, nc_filename ) ):
-                print('.. Saving to nectdf {} '.format(nc_filename))
-                ## do the saving
-                # data_da.to_netcdf(os.path.join(path2save,nc_filename),mode='w',format='NETCDF4')
-                delayed_obj = region_data.to_netcdf(os.path.join(path2save,nc_filename),mode='w',format='NETCDF4',compute=False)
-                with ProgressBar():
-                    results = delayed_obj.compute()
+            
+            
+            
+            ''' --------------
+            Load data
+            ------------------ ''' 
 
-        print(f'.. Done')
+            ## get all files in directory 
+            # year_filelist = os.listdir(os.path.join(tilepath_in,year_subdir ))
+            year_filelist = glob.glob(os.path.join(tilepath_in,year_subdir,'*.tif' ))
+            year_filelist.sort()
+
+            ## select tiles in region
+            fnames_region = [fname for fname in year_filelist if int(fname.split('.')[0].split('tile_')[1]) in tileNums_select]
+            filelist_region  = [ os.path.join(tilepath_in,year_subdir, fname) for fname in fnames_region ]
+
+            if len(filelist_region) != len(tileNums_select):
+                raise RuntimeError('Expected the same number of tiles({})/files({}) for sector {}'.format(len(tileNums_select),len(filelist_region),sector_ID))
+
+            region_data = (xr.open_mfdataset( filelist_region,  
+                        combine="nested", decode_times=False,
+                        data_vars='minimal', 
+                        coords= 'minimal', 
+                        compat='no_conflicts', #  only values which are not null in both datasets must be equal. The returned dataset then contains the combination of all non-null values
+                        chunks={'y':'auto','x':'auto','band':1}, # add chucnking info for dask
+                        parallel=True,
+                        ).isel(band=0).drop('band')
+                        .transpose('y','x')
+                        .rename({'band_data':varName})
+            )
+
+            print(f'.. loaded dataset {region_data.dims};')
+
+            ''' ## Fill dmg NaN values as 0  '''
+            if 'dmg' in varName:
+                region_data = region_data.where(~np.isnan(region_data),other=0 ) # no-dmg = 0
+                path2save = os.path.join(path2save,'damage095')
+
+            ''' ## Set rema values < 0 to NaN '''
+            if 'rema' in varName:
+                region_data = region_data.where(region_data['rema']>0,np.nan) # rema: set data<0 to NaN:
+                path2save = os.path.join(path2save,'velocity_rema')
+            
+            ''' ## Resample velocity of 120/240m to same grid as dmg maps'''
+            if 'vx' in varName or 'vy' in varName:
+                path2save = os.path.join(path2save,'velocity_rema')
+
+                # load single year of dmg data as reference grid for current sector
+                dmg_file = os.path.join(path2save, 'damage095','data_sector-{}_dmg_2021.nc'.format(sector_ID))
+                region_ds_dmg = xr.open_dataset(dmg_file)
+
+                # velocity is in 240m resolution, other data is 400m resolution --> resample grid.
+                region_data = myf.reproject_match_grid( region_ds_dmg['dmg'] ,  region_data[varName]).to_dataset() # use dmg as reference grid
+
+            ''' --------------------------------------
+            Small fixes to data for netcdf/tiff saving
+            ------------------------------------------ '''
+            try:
+                region_data = region_data.drop('spatial_ref')
+            except: pass
+            try:
+                del region_data[varName].attrs['grid_mapping']
+            except: pass
+
+            if not region_data.rio.crs:
+                # print('.. setting CRS to 3031')
+                region_data.rio.write_crs(3031,inplace=True)
+            
+            ## Small fixes to file
+            region_data.astype(float)[varName].rio.write_nodata(np.nan, encoded=True, inplace=True)
+            # reorder dimensions ( need (y,x) without 3rd time dimension to save to netCDF that QGis can read)
+            # data_da = region_data[varName].transpose('y','x')
+
+
+            ''' --------------------------------------
+            Save netCDF/GeoTIFF
+            ------------------------------------------ '''
+
+            
+            if save_nc:
+                if not os.path.isfile( os.path.join( path2save, nc_filename ) ):
+                    print('.. Saving to nectdf {} '.format(nc_filename))
+                    ## do the saving
+                    # data_da.to_netcdf(os.path.join(path2save,nc_filename),mode='w',format='NETCDF4')
+                    delayed_obj = region_data.to_netcdf(os.path.join(path2save,nc_filename),mode='w',format='NETCDF4',compute=False)
+                    with ProgressBar():
+                        results = delayed_obj.compute()
+
+            print(f'.. Done')
 
 
 '''
@@ -311,7 +313,7 @@ SAVING DMG NETCDFS FOR DATA PUBLICATION
 # for year in years_list:
 #     res='400m' # default
 #     if varName == 'dmg-25px':
-#         region_data = region_data.rename({'dmg-25px':'dmg'})
+##         region_data = region_data.rename({'dmg-25px':'dmg'})
 #         res='1000m'
 #     if int(year) == 1997 or int(year) == 2000:
 #         res='1000m'
@@ -367,7 +369,7 @@ SAVING DMG NETCDFS FOR DATA PUBLICATION
 #         fnames_region = [fname for fname in year_filelist if int(fname.split('.')[0].split('tile_')[1]) in tileNums_select]
 #         filelist_region  = [ os.path.join(tilepath_in,year_subdir, fname) for fname in fnames_region ]
 
-#         region_data = (xr.open_mfdataset( filelist_region,  
+##         region_data = (xr.open_mfdataset( filelist_region,  
 #                     combine="nested", decode_times=False,
 #                     data_vars='minimal', 
 #                     coords= 'minimal', 
@@ -381,7 +383,7 @@ SAVING DMG NETCDFS FOR DATA PUBLICATION
 
 
 #         ''' ## Fill dmg NaN values as 0  '''
-#         region_data = region_data.where(~np.isnan(region_data),other=0 ) # no-dmg = 0
+##         region_data = region_data.where(~np.isnan(region_data),other=0 ) # no-dmg = 0
 
 
         
@@ -389,7 +391,7 @@ SAVING DMG NETCDFS FOR DATA PUBLICATION
 #         Small fixes to data for netcdf/tiff saving
 #         ------------------------------------------ '''
 #         try:
-#             region_data = region_data.drop('spatial_ref')
+##             region_data = region_data.drop('spatial_ref')
 #         except: pass
 #         try:
 #             del region_data[varName].attrs['grid_mapping']
@@ -397,15 +399,15 @@ SAVING DMG NETCDFS FOR DATA PUBLICATION
 
 #         if not region_data.rio.crs:
 #             # print('.. setting CRS to 3031')
-#             region_data.rio.write_crs(3031,inplace=True)
+##             region_data.rio.write_crs(3031,inplace=True)
         
 #         ''' ## drop 'time' dimension  '''
 #         if len(region_data.dims) > 2:
 #             print(region_data.dims)
-#             region_data= region_data.isel(band=0).drop('band')
+##             region_data= region_data.isel(band=0).drop('band')
 
 #         ## Small fixes to file 
-#         region_data.astype(float)[varName].rio.write_nodata(np.nan, encoded=True, inplace=True) 
+##         region_data.astype(float)[varName].rio.write_nodata(np.nan, encoded=True, inplace=True) 
 #         # reorder dimensions ( need (y,x) without 3rd time dimension to save to netCDF that QGis can read)
 #         data_da = region_data[varName].transpose('y','x')
 
