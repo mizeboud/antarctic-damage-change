@@ -95,7 +95,7 @@ Variables to save:
 
 # years_list = ['1997']
 years_list = ['2015','2016','2017','2018','2019','2020','2021']
-# years_list = ['2019','2020','2021']
+years_list = ['2020','2021']
 
 
 tilepath_dmg = os.path.join(homedir,'Data/S1_SAR/tiles/dmg_tiled/dmg095/') # DMG S1 annual
@@ -117,7 +117,7 @@ sector_ID_list.sort()
 save_nc = True 
 
 # set directory to save output
-path2save = os.path.join(homedir,'Data/NERD/data_predictor/data_sector/') # save dir
+path2data = os.path.join(homedir,'Data/NERD/data_predictor/data_sector/') # save dir
 
 # varName = 'dmg' ; tilepath_in = tilepath_dmg
 for varName, tilepath_in in zip(variables_to_save,paths2variables):
@@ -139,7 +139,7 @@ for varName, tilepath_in in zip(variables_to_save,paths2variables):
             else: 
                 year_subdir=''
 
-        for sector_ID in sector_ID_list[-3:]:
+        for sector_ID in sector_ID_list:
 
             ### Process Weddell Sea sector in 2parts or single part || only required for velocity variables
             # if any( [var in ['vx','vy'] for var in variables_to_save]): 
@@ -160,7 +160,11 @@ for varName, tilepath_in in zip(variables_to_save,paths2variables):
             ## Make filename to save 
             # nc_base= 'data_sector-' + sector_ID + '_'+varName
             nc_filename = f'data_sector-{sector_ID}_{varName}_{year}.nc'
-
+            if 'dmg' in varName:
+                path2save = os.path.join(path2data,'damage095')
+            else:
+                path2save = os.path.join(path2data,'velocity_rema')
+                
             ## Check if variable file already exsts
             if os.path.isfile( os.path.join( path2save, nc_filename ) ):
                 print('Variable {} already saved for {} year {}'.format(varName,sector_ID, year))
@@ -200,7 +204,15 @@ for varName, tilepath_in in zip(variables_to_save,paths2variables):
             filelist_region  = [ os.path.join(tilepath_in,year_subdir, fname) for fname in fnames_region ]
 
             if len(filelist_region) != len(tileNums_select):
-                raise RuntimeError('Expected the same number of tiles({})/files({}) for sector {}'.format(len(tileNums_select),len(filelist_region),sector_ID))
+                fname_tiles = [int(os.path.basename(fname).split('.')[0].split('tile_')[1]) for fname in filelist_region]
+                for tile in tileNums_select:
+                    if tile not in fname_tiles:
+                        missing_tile = f'tile_{tile}'
+                        print(f'.. missing tile {missing_tile}')
+                # raise RuntimeError(f'Expected the same number of tiles({len(tileNums_select)})/files({len(filelist_region)}) for sector {sector_ID}. \n'\
+                #                    f'  missing: {missing_tile}'
+                # )
+                
 
             region_data = (xr.open_mfdataset( filelist_region,  
                         combine="nested", decode_times=False,
@@ -219,17 +231,14 @@ for varName, tilepath_in in zip(variables_to_save,paths2variables):
             ''' ## Fill dmg NaN values as 0  '''
             if 'dmg' in varName:
                 region_data = region_data.where(~np.isnan(region_data),other=0 ) # no-dmg = 0
-                path2save = os.path.join(path2save,'damage095')
+                
 
             ''' ## Set rema values < 0 to NaN '''
             if 'rema' in varName:
-                region_data = region_data.where(region_data['rema']>0,np.nan) # rema: set data<0 to NaN:
-                path2save = os.path.join(path2save,'velocity_rema')
+                region_data = region_data.where(region_data['rema']>0,np.nan) # rema: set data<0 to NaN
             
             ''' ## Resample velocity of 120/240m to same grid as dmg maps'''
             if 'vx' in varName or 'vy' in varName:
-                path2save = os.path.join(path2save,'velocity_rema')
-
                 # load single year of dmg data as reference grid for current sector
                 dmg_file = os.path.join(path2save, 'damage095','data_sector-{}_dmg_2021.nc'.format(sector_ID))
                 region_ds_dmg = xr.open_dataset(dmg_file)
