@@ -46,9 +46,6 @@ def load_config(configFile):
     dmg_type = config['DATA']['dmg_type']
     if dmg_type not in ['dmg','dmg095','dmg099']:
         raise ValueError('Dmg type can be ''dmg'', ''dmg095'' or ''dmg099'', received {}'.format(dmg_type))
-        
-    dtresh_dict = {'dmg':'037', 'dmg095':'053' , 'dmg099':'063'}
-    dtresh=dtresh_dict[dmg_type]
 
     ksize = config['DATA']['downsample_size']
     if ksize is None or ksize == 'None':
@@ -110,7 +107,6 @@ def load_config(configFile):
     # -- Print some settings for information
     print('Loaded settings:')
     print('  dmg_type:        {}'.format(dmg_type) )
-    print('  dtresh:          {}'.format(dtresh) )
     print('  downsample:      {}'.format(ksize) )
     print('  strain l-scale:  {}'.format(length_scales) )
     print('  years to train:  {}'.format(years_train) )    
@@ -121,7 +117,7 @@ def load_config(configFile):
     print('{} grid'.format(search_section) )
     pprint(space)
 
-    return dmg_type, dtresh, ksize, length_scales, xvar_list, \
+    return dmg_type, ksize, length_scales, xvar_list, \
                 years_train, years_exclude, train_randomSearch, train_gridSearch, \
                 scoring_metric, decision_metric, space, \
                 fold_type, k_split_outer, k_split_inner, nth_fold_rCV, n_rCV, nb_cores, \
@@ -187,24 +183,18 @@ def main(configFile):
     if configFile is None:
         raise NameError('No config file specified. Run script as "python this_script.py /path/to/config_file.ini"')
     
-    # config = configparser.ConfigParser(allow_no_value=True)
-    # config.read(os.path.join(configFile))
-    dmg_type, dtresh, ksize, length_scales, xvar_list, \
+    dmg_type, ksize, length_scales, xvar_list, \
             years_train, years_exclude, train_randomSearch, train_gridSearch, \
             scoring_metric, decision_metric, space, \
             fold_type, k_split_outer, k_split_inner, nth_fold_rCV, n_rCV, nb_cores, \
             path2data, path2save, gridTiles_geojson_path, iceshelf_path_meas, roi_path = load_config(configFile)
 
 
-    # os.makedirs(path2savefig, exist_ok=True) 
-   
 
 
     ''' ----------------------
     Load data: shapefiles 
     ------------------------- '''
-    # geojson
-    # gridTiles = gpd.read_file(gridTiles_geojson_path)
 
     # measures ice shelves
     iceshelf_poly_meas = gpd.read_file(iceshelf_path_meas)
@@ -214,6 +204,13 @@ def main(configFile):
 
     sector_ID_list = roi_poly['sector_ID'].to_list()
     sector_ID_list.sort()
+    try:
+        sector_ID_list.remove('WS-a')
+        sector_ID_list.remove('WS-b') # process WS instead
+        sector_ID_list.remove('WIS') # process WIS-a ; WIS-b instead
+    except:
+        pass
+    print('All sectors: ', sector_ID_list)
 
     ''' ----------------------
     Load data: netCDFs per region, per variable
@@ -223,9 +220,7 @@ def main(configFile):
 
     ## region_ds_list = []
     data_pxs_gdf_list = []
-    # for region_ID in region_ID_list: # region_ID_list[:-2]+[region_ID_list[-1]]:
-    for sector_ID in sector_ID_list[:1]: 
-    # for index, region_ID in enumerate(region_ID_list): # 7:]):
+    for sector_ID in sector_ID_list:#[:1]: 
 
         print('----\n Loading netCDF for region ', sector_ID)
 
@@ -244,6 +239,11 @@ def main(configFile):
         # combine to single dataset
         region_ds = xr.combine_by_coords(region_ds_varlist)
         print('Loaded variables: \n', list(region_ds.keys()) )
+
+        if dmg_type not in list(region_ds.keys()) :
+            print('.. resetting {} to ''dmg'' '.format( dmg_type))
+            dmg_type = 'dmg'             
+
 
         ''' ------------------------------
         #######
@@ -281,11 +281,13 @@ def main(configFile):
         Calculate velocity and strain for (downsampled) data
         ---------------- '''
         # calculate velocity, strain components and temporal velo/strain change
-        data_velo_strain, region_ds_roll = myf.calculate_velo_strain_features(region_ds, 
-                                                    velocity_names=('vx','vy'), 
-                                                    length_scales=length_scales)
-        region_ds = xr.merge([region_ds, data_velo_strain])
-        region_ds = xr.merge([region_ds, region_ds_roll])
+
+        for lscale in length_scales:
+            data_velo_strain, region_ds_roll = myf.calculate_velo_strain_features(region_ds, 
+                                                        velocity_names=('vx','vy'), 
+                                                        length_scales=[lscale])
+            region_ds = xr.merge([region_ds, data_velo_strain])
+            region_ds = xr.merge([region_ds, region_ds_roll])
 
 
         ''' --------------------------------------
@@ -293,6 +295,8 @@ def main(configFile):
             aggregate to 1D 
         As conversion of xr.DataSet to pd.DataFrame is quite memory-expensive, dropping a few variables is preferential
         ------------------------------------------ '''
+        print(region_ds) 
+
         region_ds = region_ds[[dmg_type] + xvar_list] # select only variables relevant training
         print('.. variables selected for training dataset: \n', list(region_ds.keys()) )
 
