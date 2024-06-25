@@ -52,6 +52,7 @@ iceshelf_flist
 
 # annual ice shelves
 iceshelf_df_1997 = gpd.read_file(os.path.join(path2iceshelves, 'iceshelf_polygon_measures_greene_1997.75.shp' ) )
+iceshelf_df_2000 = gpd.read_file(os.path.join(path2iceshelves, 'iceshelf_polygon_measures_greene_2000.2.shp' ) )
 iceshelf_df_2015 = gpd.read_file(os.path.join(path2iceshelves, 'iceshelf_polygon_measures_greene_2015.2.shp' ) )
 iceshelf_df_2016 = gpd.read_file(os.path.join(path2iceshelves, 'iceshelf_polygon_measures_greene_2016.2.shp' ) )
 iceshelf_df_2017 = gpd.read_file(os.path.join(path2iceshelves, 'iceshelf_polygon_measures_greene_2017.2.shp' ) )
@@ -63,7 +64,7 @@ iceshelf_df_2021 = gpd.read_file(os.path.join(path2iceshelves, 'iceshelf_polygon
 iceshelf_dflist = [iceshelf_df_1997,iceshelf_df_2015,iceshelf_df_2016,
                   iceshelf_df_2017,iceshelf_df_2018,iceshelf_df_2019,
                   iceshelf_df_2020,iceshelf_df_2021]
-ishelf_dict = { '1997':iceshelf_df_1997,'2015':iceshelf_df_2015,
+ishelf_dict = { '1997':iceshelf_df_1997,'2000':iceshelf_df_2000,'2015':iceshelf_df_2015,
                 '2016':iceshelf_df_2016,'2017':iceshelf_df_2017,
                 '2018':iceshelf_df_2018,'2019':iceshelf_df_2019,
                 '2020':iceshelf_df_2020,'2021':iceshelf_df_2021,
@@ -76,10 +77,11 @@ def parse_cla():
 
     Accepted arguments:
         Required:
-        --region (-r)     : 
+        --sector (-s)     : define wich region to process
         
         Optional:
-        ..       : ..
+        --year (-y)        : Specify if to process a single year; process all years if unspecified.
+        --resolution (-res): specify which type of processing resolution the input data is from. High res: 400m. Low res: 1000m. Downsampled: 400m donwsampled to 1000m.
 
     :return args: ArgumentParser return object containing command line arguments
     """
@@ -126,7 +128,6 @@ def setup_iceshelf_df_entry(iceshelf_name, ishelf_region, sector_ID ):
 def main( sector_ID, year=None, resolution='1000m' ):
 
     # Path to save dataframe
-    # path2save = os.path.join(path2data,'aggregated_dmg_per_iceshelf_annual')
     path2save = os.path.join(homedir, 'Data/NERD/dmg095_nc/aggregated/')
 
 
@@ -227,16 +228,11 @@ def main( sector_ID, year=None, resolution='1000m' ):
     
     ## region_years_masked = []
     ## for year in year_list:
-    ##     # If you want to mask only the areas where all S1-years have nodata, use  sum(mask) == ymax ;
-    ##     # If you want to mask all areas where any S1-year has nodata: the sum(mask) == 0
     ##     print('.. Applying strict any(nodata) mask {}'.format(year))
     ##     region_year = region_ds.sel(time=year).where( np.isnan(data_available_year).sum(dim='time') == 0 )  # if the mask has value 0 it means VALID data (counter intuitive, i'm sorry)
     ##     region_years_masked.append(region_year)
     ## region_ds = xr.concat ( region_years_masked, dim='time' )
     ## print(region_ds[dmg_type].shape, region_ds.dims)
-    
-    # If you want to mask only the areas where all S1-years have nodata, use  sum(mask) == ymax ;
-    # If you want to mask all areas where any S1-year has nodata: the sum(mask) == 0
     
     # count_nodata_px = np.isnan(data_available_year).sum(dim='time') # if the mask has value 0 it means VALID data (counter intuitive, i'm sorry)
     count_nodata_px = (region_masks).sum(dim='time') ## count > 0 if there is any year that has nodata. count==0 means all years have VALID data
@@ -350,11 +346,12 @@ def main( sector_ID, year=None, resolution='1000m' ):
             
             ''' ----------------
             Aggregate values to 1d
+            
+            By clipping data to iceshelf, all out-of-bound pixels are set to NaN
+            I set all nodata pixels to -999, so these are not dropped as long as they are inside icehself polygon
+            So can safely drop NaN pxs here to reduce size of datafrme.
             -------------------- '''
             ## Aggergate: Stack samples to 1D 
-            # By clipping data to iceshelf, all out-of-bound pixels are set to NaN
-            # I set all nodata pixels to -999, so these are not dropped as long as they are inside icehself polygon
-            # So can safely drop NaN pxs here to reduce size of datafrme.
             with dask.config.set(**{'array.slicing.split_large_chunks': False}): 
                 var_ds_stack = ishelf_ds.stack(samples=['x','y']) 
                 var_ds_stack  = var_ds_stack.dropna(dim='samples',how='all') 
@@ -386,8 +383,6 @@ def main( sector_ID, year=None, resolution='1000m' ):
 
             dCounts = dmg_iceshelf_year_df['dmg_discr'].value_counts()
             
-            
-            # raise RuntimeError
             ''' --------------------------------------
             Store values per ice shelf
             ------------------------------------------ '''

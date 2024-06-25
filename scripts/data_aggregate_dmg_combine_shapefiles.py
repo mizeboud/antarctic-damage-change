@@ -1,18 +1,12 @@
 
 import os
-import rioxarray as rioxr
 import geopandas as gpd
 import numpy as np
 import glob
-import xarray as xr
-
-import rasterio as rio
-
 import pandas as pd 
-import myFunctions as myf 
 
 
-saving=True
+saving=False
 
 
 ''' --------------
@@ -22,7 +16,6 @@ Paths
 homedir = '/Users/tud500158/Library/Mobile Documents/com~apple~CloudDocs/Documents/Documents - TUD500158/'
 
 
-# path2data = os.path.join(homedir, 'Data/NERD/dmg095_nc/data_sector/aggregated_dmg_per_iceshelf_annual/')
 path2data = os.path.join(homedir, 'Data/NERD/dmg095_nc/aggregated/')
 
 ''' --------------
@@ -30,7 +23,6 @@ Get Shapefiles
 ------------------ '''
 
 ## redefined: SECTORS for AIS
-# sector_path = os.path.join(homedir, 'QGis/data_NeRD/plot_insets_AIS_sectors.shp')
 sector_path = os.path.join(homedir, 'QGis/data_NeRD/AIS_outline_sectors.shp')
 sector_poly = gpd.read_file(sector_path)
 sector_ID_list = sector_poly['sector_ID'].to_list()
@@ -85,7 +77,6 @@ for year in years_list:
         df_filename = df_filename[0]
 
         ## read annual data
-        # df_data = gpd.read_file(os.path.join(path2data,df_filename))
         df_data = gpd.read_file(os.path.join(path2agg,df_filename))
 
         ## Store regional data
