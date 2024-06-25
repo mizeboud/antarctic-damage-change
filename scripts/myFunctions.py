@@ -145,7 +145,9 @@ def calculate_velo_strain_features(data_ds, velocity_names=('xvelsurf','yvelsurf
         ---------------- '''
 
         ## Calculate difference per year (first year is dropped)
-        region_ds_diff = data_ds[['emax_'+scale_name, 'v']].diff(dim='time').rename({'emax_'+scale_name:'deltaEmax','v': 'deltaV'})
+        region_ds_diff = data_ds[['emax_'+str(lscale)+'px', 'v']].diff(dim='time').rename(
+                            {'emax_'+str(lscale)+'px':'deltaEmax','v': 'deltaV'}
+        )
         # print(region_ds_diff)
 
         ## Get rolling-max diff of past 3 years. Set center=False so the window is a trailing window i-2 to i
