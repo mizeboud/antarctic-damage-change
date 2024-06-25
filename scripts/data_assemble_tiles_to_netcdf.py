@@ -63,6 +63,7 @@ iceshelf_flist
 
 # annual ice shelves
 iceshelf_df_1997 = gpd.read_file(os.path.join(path2iceshelves, 'iceshelf_polygon_measures_greene_1997.75.shp' ) )
+iceshelf_df_2000 = gpd.read_file(os.path.join(path2iceshelves, 'iceshelf_polygon_measures_greene_2000.2.shp' ) )
 iceshelf_df_2015 = gpd.read_file(os.path.join(path2iceshelves, 'iceshelf_polygon_measures_greene_2015.2.shp' ) )
 iceshelf_df_2016 = gpd.read_file(os.path.join(path2iceshelves, 'iceshelf_polygon_measures_greene_2016.2.shp' ) )
 iceshelf_df_2017 = gpd.read_file(os.path.join(path2iceshelves, 'iceshelf_polygon_measures_greene_2017.2.shp' ) )
@@ -71,7 +72,7 @@ iceshelf_df_2019 = gpd.read_file(os.path.join(path2iceshelves, 'iceshelf_polygon
 iceshelf_df_2020 = gpd.read_file(os.path.join(path2iceshelves, 'iceshelf_polygon_measures_greene_2020.2.shp' ) )
 iceshelf_df_2021 = gpd.read_file(os.path.join(path2iceshelves, 'iceshelf_polygon_measures_greene_2021.2.shp' ) )
 
-ishelf_dict = { '1997':iceshelf_df_1997,'2015':iceshelf_df_2015,
+ishelf_dict = { '1997':iceshelf_df_1997,'2000':iceshelf_df_2000,'2015':iceshelf_df_2015,
                 '2016':iceshelf_df_2016,'2017':iceshelf_df_2017,
                 '2018':iceshelf_df_2018,'2019':iceshelf_df_2019,
                 '2020':iceshelf_df_2020,'2021':iceshelf_df_2021,
@@ -105,13 +106,13 @@ Variables to save:
 years_list = ['2000']
 
 varName = 'dmg'
-varName = 'nodata'
+# varName = 'nodata'
 
 
 sector_ID_list.sort()
 
-save_nc = False 
-save_tif = False
+save_nc = True 
+save_tif = True
 
 # set directory to save output
 path2data = os.path.join(homedir,'Data/NERD/dmg095_nc/data_sector/') # save dir
@@ -124,7 +125,7 @@ for year in years_list:
     if int(year) == 1997 or int(year) == 2000:
         res='1000m'
 
-    for sector_ID in ['WS']: #sector_ID_list:
+    for sector_ID in sector_ID_list:#['ASE']:#['WS']: #sector_ID_list:
         if sector_ID == 'WIS' : # skip WIS in favor of WIS-a and WIS-b (process in parts due to memory usage)
             continue 
         # if sector_ID == 'WS' and res=='400m':
@@ -158,7 +159,7 @@ for year in years_list:
                 tilepath_in = os.path.join(homedir,'Data/RAMP/RAMP_tiled/dmg_tiled/dmg095/')
                 year_subdir=''
             if int(year) == 2000:
-                tilepath_in = os.path.join(homedir,'Data/RAMP/RAMP_tiled_mamm/damage_detection/geotiffs/')
+                tilepath_in = os.path.join(homedir,'Data/RAMP/RAMP_tiled_mamm/dmg095/')
                 year_subdir=''
             else:
                 tilepath_in = os.path.join(homedir,'Data/S1_SAR/tiles/dmg_tiled/dmg095/')
@@ -172,9 +173,13 @@ for year in years_list:
         ## get all files in directory 
         # year_filelist = os.listdir(os.path.join(tilepath_in,year_subdir ))
         year_filelist = glob.glob(os.path.join(tilepath_in,year_subdir,'*.tif' ))
+        # year_filelist = glob.glob(os.path.join(tilepath_in,year_subdir,f'*{varName}.tif' ))
         year_filelist.sort()
 
         ## select tiles in region
+        # if int(year) == 2000:
+        #     fnames_region = [fname for fname in year_filelist if int(fname.split('tile_')[1].split('_')[0]) in tileNums_select]
+        # else:
         fnames_region = [fname for fname in year_filelist if int(fname.split('.')[0].split('tile_')[1]) in tileNums_select]
         filelist_region  = [ os.path.join(tilepath_in,year_subdir, fname) for fname in fnames_region ]
 
