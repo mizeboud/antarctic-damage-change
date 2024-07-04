@@ -1,11 +1,13 @@
-import rioxarray as rioxr
+# import rioxarray as rioxr
 import xarray as xr
 import glob
 import numpy as np
 import os
 import geopandas as gpd 
 import rasterio as rio
-import warnings
+# import warnings
+import re 
+import dask
 
 # python file with useful functions to import
 
@@ -302,17 +304,32 @@ def downsample_dataArray_withoutD0( region_ds , ksize=3, boundary_method='pad', 
 
 
 def calculate_velo_strain_features(data_ds, velocity_names=('xvelsurf','yvelsurf'), length_scales=['1px']):
+    ''' Calculate velocity from horizontal vx and vy components, multiple strain components and temporal  change of velocity and strain magnitude.
+    
+    Returns 2 datasets:
+    
+    data_velo_strain    :   contains velocity magnitude 'v' and 'deltaV' (max annual velocity change with smoothened by 3-yrs trailing window)
+    region_ds_roll      :   contains strain components:
+                            - max and min principal strains, emax and emin
+                            - effective strain, e_eff
+                            - longitudonal (elon), transverse (etrans) and shear (eshear) strain
+                            - deltaEmax (max annual change of emax smoothened by 3-yrs trailing window)
+     '''
     var_name_vx, var_name_vy = velocity_names 
 
     ''' --------------
-    Calculate Velocity
+    Calculate velocity
     ------------------ '''
-    # velocity magnitude
+    # # velocity magnitude
     region_da_v = ((data_ds[var_name_vx]**2 + data_ds[var_name_vy]**2)**0.5) # .to_dataset(name='v')
 
     data_ds['v'] = region_da_v
 
+    ''' --------------
+    Calculate Strain
+    ------------------ '''
     # strain on multiple lenthscale -- version2
+    
     for scale_name in length_scales: 
         lscale = int(scale_name.strip('px'))
 
@@ -332,9 +349,6 @@ def calculate_velo_strain_features(data_ds, velocity_names=('xvelsurf','yvelsurf
         ]
         region_ds_strain = xr.merge(region_ds_strain)
         print('.. calculated strain variables ', list(region_ds_strain.keys()) )
-
-        ## add to dataset
-        # data_ds = xr.merge([data_ds, region_ds_strain])
         
         ## Add minimal (needed for temporal calculations)
         data_ds = xr.merge([data_ds, emax.to_dataset( name='emax_'+str(lscale)+'px') ] )
@@ -409,79 +423,6 @@ def drop_spatial_ref(ds):
     except:
         pass
     return ds 
-
-# def load_nc_obs_data( path2data, region_ID, varname=None, parts=['part1'],verbose=True):
-#     ''' ----------------------
-#     Load data: netCDFs per region, per variable
-#     ------------------------- '''
-#     if verbose:
-#         print('----\n Loading netCDF for region ', region_ID)
-
-#     ## Retrieve list of files for single/multi variable
-#     if not varname:
-#         ''' Load all variables from individual netCDF files '''
-#         filelist = glob.glob(path2data + '*region-'+region_ID+'_*.nc')
-#         filelist = [file for file in filelist if 'all2' not in file]
-#         filelist = [file for file in filelist if 'strain' not in file]
-#         filelist.sort()              
-#     else: 
-#         ''' Load files of single variable'''
-#         filelist = glob.glob(path2data + '*region-'+region_ID+ '_*'+ varname +'*nc')
-#         filelist.sort()
-
-#     ## Filter list for desired 'parts' 
-#     for part in parts:
-#         if not part in ['part1','part2','1997']:
-#             raise ValueError('Selected partition {} not in [''part1'',''part2'',''1997'']'.format(part))
-
-    
-#     # for part in parts:
-#     #     files_include = [file for file in filelist if part in file]
-#     #     # region_filelist += files_include
-
-#     #     # region_ds = xr.open_mfdataset( region_filelist,  
-#     #                 combine="by_coords",decode_times=True,
-#     #                 data_vars='minimal', 
-#     #                 coords= 'minimal', 
-#     #                 compat='broadcast_equals', #  all values must be equal when variables are broadcast against each other to ensure common dimensions.
-#     #             #   chunks={'y':'auto','x':'auto','time':5}, # add chucnking info for dask
-#     #                 chunks={'y':2000,'x':2000,'time':5}, # add chucnking info for dask: multitude of downsampling size
-#     #                 )  
-#     #     print('Loaded variables: \n', list(region_ds.keys()) )
-#     # else:
-
-#     if len(parts) == 1:
-#         part=parts[0]
-#         ''' Load selected variable '''
-#         # # region_varfile = glob.glob(path2data + '*region-'+region_ID+ '_*'+ varname +'_'+part+'*nc')[0]
-#         region_varfile = [file for file in filelist if part in file]
-#         if len(region_varfile)>1:
-#             raise ValueError('Expected 1 file for part {}, found: {}'.format(part, region_varfile) )
-            
-#         region_varfile = region_varfile[0]
-#         # load single file
-#         region_ds = xr.open_dataset( region_varfile )
-
-#     else: # combine all parts
-#         # filelist = glob.glob(path2data + '*region-'+region_ID+ '_*'+ varname +'*nc')
-#         region_filelist = []
-#         for part in parts:
-#             files_include = [file for file in filelist if part in file]
-#             region_filelist += files_include
-        
-#         with xr.open_mfdataset( region_filelist,  
-#                 combine="by_coords",decode_times=True,
-#                 data_vars='minimal', 
-#                 coords= 'minimal', 
-#                 compat='broadcast_equals', #  all values must be equal when variables are broadcast against each other to ensure common dimensions.
-#                 chunks={'y':2000,'x':2000,'time':1}, # add chucnking info for dask: multitude of downsampling size
-#                 # engine='scipy',
-#                 )  as region_ds:
-#                 print('opening region_ds')
-
-#     print('Loaded variables: \n', list(region_ds.keys()) )
-
-#     return region_ds
 
 
 
@@ -579,3 +520,79 @@ def update_stricter_dmg_threshold( dmg_da , dmg_threshold ,reduce_or_mask_D='red
         region_da_dmg_prune = dmg_da.where(dmg_da['dmg'] > dmg_threshold, other=0) # .rename('dmg_prune') # sets other px to 0 -- because I dont want to remove NaN px too early
 
     return region_da_dmg_prune
+
+
+def load_nc_sector_years( path2data, sector_ID, year_list=None, varName=None ):
+    ''' Load all/selected annual netCDF files of a variable for one sector'''
+
+    ## get filelist of variable for current sector
+    filelist_dir =  glob.glob( os.path.join(path2data, f'*_sector-{sector_ID}_*.nc') )
+    filelist_var_all = [file for file in filelist_dir if varName in file]
+    filelist_var_all.sort()
+
+    ## select files for all/specified years 
+    if year_list is None: # all years
+        ## load list of files
+        filenames = [os.path.basename(file) for file in filelist_var_all]
+        ## retrieve available years from filenames
+        year_list = [int( re.search(r'\d{4}', file).group()) for file in filenames]
+        filelist_var = filelist_var_all.copy()
+
+    else: # filter filelist for desired year
+        filelist_var=[]
+        for year in year_list:
+            filelist_yr = [file for file in filelist_var_all if str(year) in os.path.basename(file)]
+            # print(filelist_yr)
+            if not filelist_yr:
+                raise ValueError(f'Could not find year {year}')
+            filelist_var.append(filelist_yr)
+
+    ## Open dataset(s)
+
+    try: # read all years at once
+        region_ds = (xr.open_mfdataset(filelist_var ,
+                    combine='nested', concat_dim='time',
+                    compat='no_conflicts',
+                    preprocess=drop_spatial_ref)
+            .rio.write_crs(3031,inplace=True)
+            .assign_coords(time=year_list) # update year values (y,x,time)
+        )
+    except ValueError: # read year by year, then concatenate
+        region_list = []
+        for file in filelist_var:
+            yr = int( re.search(r'\d{4}', os.path.basename(file[0])).group()) 
+            # print(yr)
+            with xr.open_mfdataset(file) as ds:
+                try:
+                    ds.assign_coords(time=yr)
+                except: pass
+                region_list.append(ds.rio.write_crs(3031,inplace=True))
+        region_ds = xr.concat(region_list,dim='time')  
+        # print(region_ds.coords) 
+    return region_ds
+
+def downsample_obs_data(region_ds,ksize):
+    dx = int(region_ds.rio.resolution()[0])
+    dy = int(region_ds.rio.resolution()[1])
+    if np.abs(dx) != np.abs(dy):
+        print("Warning: x and y resolution are not the same; {} and {} -- code update required".format(np.abs(dx), np.abs(dy) ))
+
+    # with dask.config.set(**{'array.slicing.split_large_chunks': True}): # gives error?
+    with dask.config.set(**{'array.slicing.split_large_chunks': False}): ## accept large chunks; ignore warning
+        region_ds = downsample_dataArray_withoutD0(region_ds, ksize=ksize, 
+                                    boundary_method='pad',downsample_func='mean', skipna=False)
+    new_res = ksize*400
+    print('.. resolution {}m downsampled to {}m'.format(dx, new_res))
+
+
+    # Check if grid resolution is regular (otherwise, adjust)
+    if np.abs(int(region_ds.rio.resolution()[0]) ) != np.abs( int(region_ds.rio.resolution()[1]) ):
+        print( "x and y resolution are not the same; {} and {} -- resample to regular grid of {}m".format(
+                    np.abs(int(region_ds.rio.resolution()[0])), 
+                    np.abs(int(region_ds.rio.resolution()[1])), new_res ))
+        
+        grid_dummy = make_regular_grid_for_ds(region_ds, grid_res=new_res)
+        region_ds.rio.write_crs(3031, inplace=True)
+        region_ds = reproject_match_grid( grid_dummy, region_ds )         
+
+    return region_ds
