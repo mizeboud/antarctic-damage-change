@@ -3,7 +3,8 @@ import numpy as np
 import os
 import geopandas as gpd 
 import rasterio as rio
-
+import glob
+import re
 
 
 def calc_nominal_strain(vx, vy, length_scale_px=1 ,version2 = None , dx=None ):
@@ -320,3 +321,55 @@ def reproject_match_grid( ref_img_da, img_da , resample_method=rio.enums.Resampl
     })
     
     return img_repr_match.transpose(*dims) # transpose dimension order back to original
+
+
+
+
+def load_nc_sector_years( path2data, sector_ID, year_list=None, varName=None ):
+    ''' Load all/selected annual netCDF files of a variable for one sector'''
+
+    ## get filelist of variable for current sector
+    filelist_dir =  glob.glob( os.path.join(path2data, f'*_sector-{sector_ID}_*.nc') )
+    filelist_var_all = [file for file in filelist_dir if varName in file]
+    filelist_var_all.sort()
+
+    ## select files for all/specified years 
+    if year_list is None: # all years
+        ## load list of files
+        filenames = [os.path.basename(file) for file in filelist_var_all]
+        ## retrieve available years from filenames
+        year_list = [int( re.search(r'\d{4}', file).group()) for file in filenames]
+        filelist_var = filelist_var_all.copy()
+
+    else: # filter filelist for desired year
+        filelist_var=[]
+        for year in year_list:
+            filelist_yr = [file for file in filelist_var_all if str(year) in os.path.basename(file)]
+            # print(filelist_yr)
+            if not filelist_yr:
+                raise ValueError(f'Could not find year {year}')
+            filelist_var.append(filelist_yr)
+
+    ## Open dataset(s)
+
+    try: # read all years at once
+        region_ds = (xr.open_mfdataset(filelist_var ,
+                    combine='nested', concat_dim='time',
+                    compat='no_conflicts',
+                    preprocess=drop_spatial_ref)
+            .rio.write_crs(3031,inplace=True)
+            .assign_coords(time=year_list) # update year values (y,x,time)
+        )
+    except ValueError: # read year by year, then concatenate
+        region_list = []
+        for file in filelist_var:
+            yr = int( re.search(r'\d{4}', os.path.basename(file[0])).group()) 
+            # print(yr)
+            with xr.open_mfdataset(file) as ds:
+                try:
+                    ds.assign_coords(time=yr)
+                except: pass
+                region_list.append(ds.rio.write_crs(3031,inplace=True))
+        region_ds = xr.concat(region_list,dim='time')  
+        # print(region_ds.coords) 
+    return region_ds
