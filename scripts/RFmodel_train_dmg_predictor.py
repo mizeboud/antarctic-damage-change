@@ -21,6 +21,9 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import RandomizedSearchCV, GridSearchCV, GroupKFold
 from joblib import dump, load
 
+from imblearn.over_sampling import RandomOverSampler
+from imblearn.under_sampling import RandomUnderSampler
+
 # Import user functions
 import myFunctions as myf 
 
@@ -64,6 +67,12 @@ def load_config(configFile):
     k_split_outer = int(config['DATA']['k_groupSplit_traintest'])
     k_split_inner = int(config['DATA']['k_groupSplit_trainval'])
     nth_fold_rCV = int(config['DATA']['select_nth_testFold'])
+    try:
+        handle_noDMG = config['DATA']['handle_noDamage'] # 'drop'  or 'undersample'
+        do_oversample = True if config['DATA']['oversample'] == 'True' else False
+    except:
+        handle_noDMG = 'drop' 
+        do_oversample = False
 
     ## runtime settings
     nb_cores =  int(config['RUNTIMEOPTIONS']['cores'])
@@ -121,59 +130,113 @@ def load_config(configFile):
                 years_train, years_exclude, train_randomSearch, train_gridSearch, \
                 scoring_metric, decision_metric, space, \
                 fold_type, k_split_outer, k_split_inner, nth_fold_rCV, n_rCV, nb_cores, \
-                path2data, path2save, gridTiles_geojson_path, iceshelf_path_meas, roi_path
+                path2data, path2save, gridTiles_geojson_path, iceshelf_path_meas, roi_path,\
+                    handle_noDMG, do_oversample
+
+def undersample_nodamage(fold1_traindata, dmg_type):
+    df_discr = fold1_traindata.copy()
+    bins = np.array([-0.001,0,1.1]) # creates 2 bins: values <0 and values > 0
+    binlabel = ['no damage', 'dmg' ]
+    df_discr['dmg_binned'] , cut_bin1 = pd.cut(df_discr[dmg_type], bins = bins, labels=binlabel,
+                                    include_lowest = True, # includes lowest bin. NB: values below this bin are dropped (e.g. any -999 nodata value)
+                                    retbins=True, right=True) 
+    ## define number of samples per class
+    bin_counts_input = df_discr['dmg_binned'].value_counts() #.values
+    # n_largest_class = np.max(bin_counts_input)
+    new_bin_size = {'no damage':  bin_counts_input['dmg'], ## set to same as dmg class # int( n_largest_class*0.7) ,  # keep x% of largest class 
+                    'dmg': bin_counts_input['dmg'] }
+    print(' -- undersampling pxs from (noDamage):{} and Damage:{} to both {}'.format(bin_counts_input['no damage'] , bin_counts_input['dmg'] , bin_counts_input['dmg'] ))
+    undersample = RandomUnderSampler( sampling_strategy= new_bin_size )
+    X, y = df_discr.drop(['geometry'],axis=1), df_discr[['dmg_binned']].values.flatten()
+    # X, y = df_discr, df_discr[['dmg_binned']].values.flatten()
+    X_under, y_under = undersample.fit_resample(X, y)
+
+    # use undersampled traindata
+    return X_under 
                 
+def under_oversample_dataframe(fold1_traindata,dmg_type, undersampling=False,oversampling=False):
+    ''' ------------------------------
+    Adjust sample imbalance:
+    Apply to selected traindata that will be used in the hyperparam tuning
 
-    
-def load_nc_sector_years( path2data, sector_ID, year_list=None, varName=None ):
-    ''' Load all/selected annual netCDF files of a variable for one sector'''
+    Following these (optional) steps:
+    (a) discretize damage values into 10 bins
+    (b) undersample majority class (which has ~80% of data)
+    (c) oversample minority classes
+    --  NB: do this AFTER selecting train/test data and Oversampling ONLY on training data
+        because otherwise in the oversampling process, test-data is leaked into training set !! Undersampling could be done before
+    ----------------------------------'''
+    if undersampling:
 
-    ## get filelist of variable for current sector
-    filelist_dir =  glob.glob( os.path.join(path2data, f'*_sector-{sector_ID}_*.nc') )
-    filelist_var_all = [file for file in filelist_dir if varName in file]
-    filelist_var_all.sort()
-
-    ## select files for all/specified years 
-    if year_list is None: # all years
-        ## load list of files
-        filenames = [os.path.basename(file) for file in filelist_var_all]
-        ## retrieve available years from filenames
-        year_list = [int( re.search(r'\d{4}', file).group()) for file in filenames]
-        filelist_var = filelist_var_all.copy()
-
-    else: # filter filelist for desired year
-        filelist_var=[]
-        for year in year_list:
-            filelist_yr = [file for file in filelist_var_all if str(year) in os.path.basename(file)]
-            print(filelist_yr)
-            if not filelist_yr:
-                raise ValueError(f'Could not find year {year}')
-            filelist_var.append(filelist_yr)
-
-    ## Open dataset(s)
-
-    try: # read all years at once
-        region_ds = (xr.open_mfdataset(filelist_var ,
-                    combine='nested', concat_dim='time',
-                    compat='no_conflicts',
-                    preprocess=myf.drop_spatial_ref)
-            .rio.write_crs(3031,inplace=True)
-            .assign_coords(time=year_list) # update year values (y,x,time)
-        )
-    except ValueError: # read year by year, then concatenate
-        region_list = []
-        for file in filelist_var:
-            yr = int( re.search(r'\d{4}', os.path.basename(file[0])).group()) 
-            print(yr)
-            with xr.open_mfdataset(file) as ds:
-                try:
-                    ds.assign_coords(time=yr)
-                except: pass
-                region_list.append(ds.rio.write_crs(3031,inplace=True))
-        region_ds = xr.concat(region_list,dim='time')  
-        print(region_ds.coords) 
-    return region_ds
+        # Discretize dmg values to identify majority and minority classes
+        print('.. adjusting sample imbalance, based on dmg binned to 10 classes ')
+        df_discr = fold1_traindata.copy()
+        bins    = np.linspace(0,df_discr[dmg_type].max(), num=11, endpoint=True) # discretize into 10 classes
+        binlabel=['bin-'+str(i) for i in range(0,10) ] 
+        df_discr['dmg_binned'] , cut_bin1 = pd.cut(x = df_discr[dmg_type], bins = bins, labels=binlabel,
+                                        include_lowest = True, retbins=True, right=True)
         
+        '''FIRST: undersampling of extreme majority class '''
+        if undersampling:
+            ## define number of samples per class/bin
+            bin_counts_input = df_discr['dmg_binned'].value_counts().values
+            n_largest_class = np.max(bin_counts_input)
+            bin_nums_under = {'bin-0':np.min([ bin_counts_input[0], int( n_largest_class*0.7) ]),  # keep x% of largest class 
+                            'bin-1': bin_counts_input[1],  
+                            'bin-2': bin_counts_input[2],  
+                            'bin-3': bin_counts_input[3],  
+                            'bin-4': bin_counts_input[4],  
+                            'bin-5': bin_counts_input[5],  
+                            'bin-6': bin_counts_input[6],  
+                            'bin-7': bin_counts_input[7],  
+                            'bin-8': bin_counts_input[8],  
+                            'bin-9': bin_counts_input[9],  
+                            }
+
+            undersample = RandomUnderSampler(sampling_strategy=bin_nums_under)
+            X, y = df_discr.drop(['geometry'],axis=1), df_discr[['dmg_binned']].values.flatten()
+            X_under, y_under = undersample.fit_resample(X, y)
+
+            if oversampling:
+
+                ''' ## SECOND: oversampling of minority classes'''
+
+                bin_counts_input = X_under['dmg_binned'].value_counts().values
+                n_largest_class = np.max(bin_counts_input)
+
+                bin_nums_over = {'bin-0':np.max([ bin_counts_input[0], int( n_largest_class*1) ]),  # largest class 
+                                'bin-1': np.max([ bin_counts_input[1], int( n_largest_class*0.8) ]),  # 
+                                'bin-2': np.max([ bin_counts_input[2], int( n_largest_class*0.7) ]),  # 
+                                'bin-3': np.max([ bin_counts_input[3], int( n_largest_class*0.6) ]),  # to 20%
+                                'bin-4': np.max([ bin_counts_input[4], int( n_largest_class*0.5) ]), #  
+                                'bin-5': np.max([ bin_counts_input[5], int( n_largest_class*0.4) ]), # 
+                                'bin-6': np.max([ bin_counts_input[6], int( n_largest_class*0.3) ]), # 
+                                'bin-7': np.max([ bin_counts_input[7], int( n_largest_class*0.2) ]), # | to 10%
+                                'bin-8': np.max([ bin_counts_input[8], int( n_largest_class*0.1) ]), #  
+                                'bin-9': np.max([ bin_counts_input[9], int( n_largest_class*0.1) ]), # 
+                                }   
+                oversample = RandomOverSampler(sampling_strategy=bin_nums_over) # ratio of minority class to majority (only for binary)
+                X_under_over, y_under_over = oversample.fit_resample(X_under, y_under)
+
+                print('Total samples input                  : ', len(df_discr) ) 
+                print('Total samples under-and-oversampling : ', len(X_under_over) ) 
+
+                # use under+oversampled traindata
+                fold1_traindata = X_under_over 
+                # fold1_spatialgroups = X_under_over[fold_type] 
+                print('---\n NEW CV-INNER INFO WITH UNDER+OVERSAMPLED DATA')
+            else:
+
+                print('Total samples input         : ', len(df_discr) ) 
+                print('Total samples undersampling : ', len(X_under) ) 
+
+                # use undersampled traindata
+                fold1_traindata = X_under 
+                # fold1_spatialgroups = X_under[fold_type] 
+                print('---\n NEW CV-INNER INFO WITH UNDERSAMPLED DATA')
+
+    return fold1_traindata
+    
 
 def main(configFile):
 
@@ -187,7 +250,8 @@ def main(configFile):
             years_train, years_exclude, train_randomSearch, train_gridSearch, \
             scoring_metric, decision_metric, space, \
             fold_type, k_split_outer, k_split_inner, nth_fold_rCV, n_rCV, nb_cores, \
-            path2data, path2save, gridTiles_geojson_path, iceshelf_path_meas, roi_path = load_config(configFile)
+            path2data, path2save, gridTiles_geojson_path, iceshelf_path_meas, roi_path,\
+                 handle_noDMG, do_oversample = load_config(configFile)
 
 
 
@@ -231,10 +295,10 @@ def main(configFile):
         ----------------------- '''
         region_ds_varlist=[]
         for var in ['vx','vy','dmg']: # base variables to read, from which all other training features are calculated
-            region_var = load_nc_sector_years( path2data, sector_ID, varName=var) # load all available years
+            region_var = myf.load_nc_sector_years( path2data, sector_ID, varName=var) # load all available years
             region_ds_varlist.append(region_var)
         # load rema (only 1 year)
-        region_var = load_nc_sector_years( path2data, sector_ID, varName='rema', year_list=['0000']) # , year_list=years_train)
+        region_var = myf.load_nc_sector_years( path2data, sector_ID, varName='rema', year_list=['0000']) # , year_list=years_train)
         region_ds_varlist.append(region_var)
         # combine to single dataset
         region_ds = xr.combine_by_coords(region_ds_varlist)
@@ -300,7 +364,7 @@ def main(configFile):
         region_ds = region_ds[[dmg_type] + xvar_list] # select only variables relevant training
         print('.. variables selected for training dataset: \n', list(region_ds.keys()) )
 
-        ''' Clip to iceshelf '''
+        ''' Clip to iceshelf ''' 
         iceshelf_polygon_gpd = iceshelf_poly_meas.drop(['testField','TYPE'],axis=1)
         region_ds  = region_ds.rio.clip( iceshelf_polygon_gpd.geometry, iceshelf_polygon_gpd.crs, drop=False, invert=False)
 
@@ -339,14 +403,6 @@ def main(configFile):
         data_pxs_df.dropna(subset=xvar_list, axis='index',inplace=True) # Drop rows which contain missing values.
 
 
-        ''' ----------------
-        PREP DATA to do RF regression
-        --------------------'''
-        
-        # # remove all 0 values
-        print('.. dropping {} rows with dmg=0 (after downsampling)'.format(len(data_pxs_df.loc[data_pxs_df[dmg_type]==0] )) )
-        data_pxs_df = data_pxs_df.loc[data_pxs_df[dmg_type]>0]
-
 
         ''' ----------------
         Add index of corresponding ice shelf to each point (to be used for spatial k-fold CV)
@@ -381,6 +437,18 @@ def main(configFile):
     ----------------------------------'''
 
     data_df = pd.concat(data_pxs_gdf_list) # dataset with px samples of all ice shelves
+
+
+    ''' ----------------
+    PREP DATA to do RF regression
+    --------------------'''
+    
+    if handle_noDMG == 'drop':
+        # # remove all 0 values
+        print('.. dropping {} rows with dmg=0 (after downsampling)'.format(len(data_df.loc[data_df[dmg_type]==0] )) )
+        data_df = data_df.loc[data_df[dmg_type]>0]
+    if handle_noDMG == 'undersample':
+        data_df = undersample_nodamage(data_df , dmg_type )
 
     # Report time for loading
     end_t = time.time()
@@ -510,71 +578,14 @@ def main(configFile):
     
 
     ''' ------------------------------
-    Adjust sample imbalance:
+    Optional: Adjust sample imbalance:
     Apply to selected traindata that will be used in the hyperparam tuning
-    
-    Following these steps:
-    (a) discretize damage values into 10 bins
-    (b) undersample majority class (which has ~80% of data)
-    (c) oversample minority classes
-    --  NB: do this AFTER selecting train/test data and Oversampling ONLY on training data
-        because otherwise in the oversampling process, test-data is leaked into training set !! Undersampling could be done before
     ----------------------------------'''
-
-    ## Discretize dmg values to identify majority and minority classes
-    # print('.. adjusting sample imbalance ')
-    # df_discr = fold1_traindata.copy()
-    # bins    = np.linspace(0,df_discr[dmg_type].max(), num=11, endpoint=True) # discretize into 10 classes
-    # binlabel=['bin-'+str(i) for i in range(0,10) ] 
-    # df_discr['dmg_binned'] , cut_bin1 = pd.cut(x = df_discr[dmg_type], bins = bins, labels=binlabel,
-    #                                 include_lowest = True, retbins=True, right=True)
-    
-    # '''FIRST: undersampling of extreme majority class '''
-    # bin_counts_input = df_discr['dmg_binned'].value_counts().values
-    # n_largest_class = np.max(bin_counts_input)
-    # bin_nums_under = {'bin-0':np.min([ bin_counts_input[0], int( n_largest_class*0.7) ]),  # keep x% of largest class 
-    #                 'bin-1': bin_counts_input[1],  
-    #                 'bin-2': bin_counts_input[2],  
-    #                 'bin-3': bin_counts_input[3],  
-    #                 'bin-4': bin_counts_input[4],  
-    #                 'bin-5': bin_counts_input[5],  
-    #                 'bin-6': bin_counts_input[6],  
-    #                 'bin-7': bin_counts_input[7],  
-    #                 'bin-8': bin_counts_input[8],  
-    #                 'bin-9': bin_counts_input[9],  
-    #                 }
-
-    # undersample = RandomUnderSampler(sampling_strategy=bin_nums_under)
-    # X, y = df_discr.drop(['geometry'],axis=1), df_discr[['dmg_binned']].values.flatten()
-    # X_under, y_under = undersample.fit_resample(X, y)
-
-    # ''' ## SECOND: oversampling of minority classes'''
-
-    # bin_counts_input = X_under['dmg_binned'].value_counts().values
-    # n_largest_class = np.max(bin_counts_input)
-
-    # bin_nums_over = {'bin-0':np.max([ bin_counts_input[0], int( n_largest_class*1) ]),  # largest class 
-    #                 'bin-1': np.max([ bin_counts_input[1], int( n_largest_class*0.8) ]),  # 
-    #                 'bin-2': np.max([ bin_counts_input[2], int( n_largest_class*0.7) ]),  # 
-    #                 'bin-3': np.max([ bin_counts_input[3], int( n_largest_class*0.6) ]),  # to 20%
-    #                 'bin-4': np.max([ bin_counts_input[4], int( n_largest_class*0.5) ]), #  
-    #                 'bin-5': np.max([ bin_counts_input[5], int( n_largest_class*0.4) ]), # 
-    #                 'bin-6': np.max([ bin_counts_input[6], int( n_largest_class*0.3) ]), # 
-    #                 'bin-7': np.max([ bin_counts_input[7], int( n_largest_class*0.2) ]), # | to 10%
-    #                 'bin-8': np.max([ bin_counts_input[8], int( n_largest_class*0.1) ]), #  
-    #                 'bin-9': np.max([ bin_counts_input[9], int( n_largest_class*0.1) ]), # 
-    #                 }   
-    # oversample = RandomOverSampler(sampling_strategy=bin_nums_over) # ratio of minority class to majority (only for binary)
-    # X_under_over, y_under_over = oversample.fit_resample(X_under, y_under)
-
-    # print('Total samples input                  : ', len(df_discr) ) 
-    # print('Total samples under-and-oversampling : ', len(X_under_over) ) 
-
-    # # use oversampled traindata
-    # fold1_traindata = X_under_over 
-    # fold1_spatialgroups = X_under_over[fold_type] 
-    # print('---\n NEW CV-INNER INFO WITH OVERSAMPLED DATA')
-
+    if do_undersample or do_oversample:
+        fold1_traindata = under_oversample_dataframe(fold1_traindata,dmg_type, 
+                                                            undersampling=do_undersample,
+                                                            oversampling=do_oversample)
+        fold1_spatialgroups=fold1_traindata[fold_type]
 
     ''' --------------
     ## Inner fold info:
