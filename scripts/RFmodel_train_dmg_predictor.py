@@ -135,6 +135,10 @@ def load_config(configFile):
 
 def undersample_nodamage(fold1_traindata, dmg_type):
     df_discr = fold1_traindata.copy()
+
+    ## drop any remaining rows that have NaN values (in any column)
+    df_discr.dropna(axis='index',inplace=True) #
+
     bins = np.array([-0.001,0,1.1]) # creates 2 bins: values <0 and values > 0
     binlabel = ['no damage', 'dmg' ]
     df_discr['dmg_binned'] , cut_bin1 = pd.cut(df_discr[dmg_type], bins = bins, labels=binlabel,
@@ -147,14 +151,15 @@ def undersample_nodamage(fold1_traindata, dmg_type):
                     'dmg': bin_counts_input['dmg'] }
     print(' -- undersampling pxs from (noDamage):{} and Damage:{} to both {}'.format(bin_counts_input['no damage'] , bin_counts_input['dmg'] , bin_counts_input['dmg'] ))
     undersample = RandomUnderSampler( sampling_strategy= new_bin_size )
-    X, y = df_discr.drop(['geometry'],axis=1), df_discr[['dmg_binned']].values.flatten()
+    # X, y = df_discr.drop(['geometry'],axis=1), df_discr[['dmg_binned']].values.flatten()
+    X, y = df_discr, df_discr[['dmg_binned']].values.flatten()
     # X, y = df_discr, df_discr[['dmg_binned']].values.flatten()
     X_under, y_under = undersample.fit_resample(X, y)
 
     # use undersampled traindata
     return X_under 
                 
-def under_oversample_dataframe(fold1_traindata,dmg_type, undersampling=False,oversampling=False):
+def under_oversample_dataframe(fold1_traindata,dmg_type, undersampling=True,oversampling=False):
     ''' ------------------------------
     Adjust sample imbalance:
     Apply to selected traindata that will be used in the hyperparam tuning
@@ -350,6 +355,11 @@ def main(configFile):
             data_velo_strain, region_ds_roll = myf.calculate_velo_strain_features(region_ds, 
                                                         velocity_names=('vx','vy'), 
                                                         length_scales=[lscale])
+
+            ## Fill the first temporal-difference timestep (2015) with the same value as 2015-16  so that this time slice doesnt get dropped later on
+            da_delta_2015_new = region_ds_roll.sel(time=2016).assign_coords(time=2015) # select 2016 from dataset and assing it as time=2015
+            region_ds_roll = xr.concat([da_delta_2015_new, region_ds_roll],dim='time') # replace it with the copied value
+
             region_ds = xr.merge([region_ds, data_velo_strain])
             region_ds = xr.merge([region_ds, region_ds_roll])
 
@@ -400,9 +410,8 @@ def main(configFile):
         -------------------- '''
 
         print('.. dropping {} rows with any NaN value'.format( data_pxs_df.isna().sum(axis='index').max() ))
-        data_pxs_df.dropna(subset=xvar_list, axis='index',inplace=True) # Drop rows which contain missing values.
-
-
+        data_pxs_df.dropna(subset=xvar_list, axis='index',inplace=True) # Drop rows if any feature has missing values.
+        # data_pxs_df.fillna(-999,inplace=True) # fill nan values  for other columns with -999 ## GIVES ISSUE FOR UNDERSAMPLING D==0
 
         ''' ----------------
         Add index of corresponding ice shelf to each point (to be used for spatial k-fold CV)
@@ -581,9 +590,9 @@ def main(configFile):
     Optional: Adjust sample imbalance:
     Apply to selected traindata that will be used in the hyperparam tuning
     ----------------------------------'''
-    if do_undersample or do_oversample:
+    if do_oversample:
         fold1_traindata = under_oversample_dataframe(fold1_traindata,dmg_type, 
-                                                            undersampling=do_undersample,
+                                                            undersampling=True, # first undersample majority class; then oversample minority class
                                                             oversampling=do_oversample)
         fold1_spatialgroups=fold1_traindata[fold_type]
 
