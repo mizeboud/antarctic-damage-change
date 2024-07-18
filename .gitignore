@@ -2,5 +2,4 @@
 */archive/
 */.DS_Store
 tmp/
-_envs/
-.envs/
+.venv/
