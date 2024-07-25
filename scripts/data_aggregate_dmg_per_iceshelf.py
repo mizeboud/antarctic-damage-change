@@ -61,9 +61,9 @@ iceshelf_df_2019 = gpd.read_file(os.path.join(path2iceshelves, 'iceshelf_polygon
 iceshelf_df_2020 = gpd.read_file(os.path.join(path2iceshelves, 'iceshelf_polygon_measures_greene_2020.2.shp' ) )
 iceshelf_df_2021 = gpd.read_file(os.path.join(path2iceshelves, 'iceshelf_polygon_measures_greene_2021.2.shp' ) )
 
-iceshelf_dflist = [iceshelf_df_1997,iceshelf_df_2015,iceshelf_df_2016,
-                  iceshelf_df_2017,iceshelf_df_2018,iceshelf_df_2019,
-                  iceshelf_df_2020,iceshelf_df_2021]
+# iceshelf_dflist = [iceshelf_df_1997,iceshelf_df_2015,iceshelf_df_2016,
+#                   iceshelf_df_2017,iceshelf_df_2018,iceshelf_df_2019,
+#                   iceshelf_df_2020,iceshelf_df_2021]
 ishelf_dict = { '1997':iceshelf_df_1997,'2000':iceshelf_df_2000,'2015':iceshelf_df_2015,
                 '2016':iceshelf_df_2016,'2017':iceshelf_df_2017,
                 '2018':iceshelf_df_2018,'2019':iceshelf_df_2019,
@@ -371,7 +371,7 @@ def main( sector_ID, year=None, resolution='1000m' ):
                 dmg_iceshelf_year_df = var_ds_stack.to_dataframe().droplevel(['x','y']).reset_index('time').drop(['spatial_ref'],axis=1)
 
             ## Discretize dmg
-            dmg_classes2 = np.array([-0.001, 0,  0.0125, 0.0625, 0.1625, 0.3125])
+            dmg_classes2 = np.array([-0.001, 0,  0.0125, 0.0625, 0.1625, 0.3125]) # start with negative bounds to get "d=0" as a single class 
             dmg_class_labels = ['no damage', 'low', 'medium','high' ,'very high']
             # Update for correct inclusive righter bin edge.
             dmg_classes2 = np.array([-0.001, 0,  0.0125, 0.0625, 1.1]) 
