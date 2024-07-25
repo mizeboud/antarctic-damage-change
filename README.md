@@ -6,10 +6,13 @@ This README doc is under construction; more info to be added
 </span>
 
 ## Intro
-This repository provides code accompanying the paper "Antarctic ice shelves vulnerable to damage in future climate warming" by M. Izeboud and S. Lhermitte, in review at Nature Climate Change (2024).
+This repository provides code accompanying the paper "Antarctic ice shelves vulnerable to damage in future climate warming" by M. Izeboud, S. Lhermitte, S. de Roda Husman, B. Wouters in review at Nature Climate Change (2024).
 
 ## About
-..
+In this project, we
+1. Detect damage on Antarctic ice shelves from SAR remote sensing imagery, using the Normalised Radon Transform Detection method (NeRD; see Izeboud and Lhermitte (2023), Remote Sensing of Environment, https://doi.org/10.1016/j.rse.2022.113359).
+2. Damage maps are created for the years 1997, 2000, 2015, 2016, 2017, 2018, 2019, 2020, 2021; obtained from SAR data from the Radarsat mission (1997 and 2000) and Sentinel-1 observations (2015-2021).
+3. An estimated relationship between damage and ice dynamical parameters is constructed using a Random Forest Regression. This relationship is used to gain insights in the effects of changing conditions on the evolution of damage, providing insights in effects of potential future climate scenarios on Antarctic ice shelf stability.
 
 ## Structure of the repo
 This repository provides code to replicate results in the manuscript.
