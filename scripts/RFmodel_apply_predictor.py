@@ -2,6 +2,7 @@ import os
 import geopandas as gpd
 import numpy as np
 import xarray as xr
+import rioxarray as rio # needed for reprojections
 import cftime as cft
 import joblib 
 import configparser
@@ -227,6 +228,12 @@ for sector_ID in sector_ID_list: # ['ASE']:
         data_velo_strain, region_ds_roll = myf.calculate_velo_strain_features(region_ds, 
                                                     velocity_names=('vx','vy'), 
                                                     length_scales=[lscale])
+        
+        ## Fill the first temporal-difference timestep (2015) with the same value as 2015-16  so that this time slice doesnt get dropped later on
+        da_delta_2015_new = region_ds_roll.sel(time=2016).assign_coords(time=2015) # select 2016 from dataset and assing it as time=2015
+        region_ds_roll = xr.concat([da_delta_2015_new, region_ds_roll],dim='time') # replace it with the copied value
+
+        ## add to dataSet
         region_ds = xr.merge([region_ds, data_velo_strain])
         region_ds = xr.merge([region_ds, region_ds_roll])
 
