@@ -20,7 +20,6 @@ Set Paths
 homedir = '/Users/tud500158/Library/Mobile Documents/com~apple~CloudDocs/Documents/Documents - TUD500158/'
 
 
-path2data = os.path.join(homedir, 'Data/NERD/dmg095_nc/data_sector/')
 
 path2iceshelves = os.path.join(homedir,'Data/Greene2022_AIS_coastlines/shapefiles/annual_iceshelf_polygons/revised_measures_greene/')
 iceshelf_path_meas = os.path.join(homedir, 'QGis/Quantarctica/Quantarctica3/Glaciology/MEaSUREs Antarctic Boundaries/IceShelf/IceShelf_Antarctica_v02.shp')
@@ -52,7 +51,7 @@ iceshelf_flist
 
 # annual ice shelves
 iceshelf_df_1997 = gpd.read_file(os.path.join(path2iceshelves, 'iceshelf_polygon_measures_greene_1997.75.shp' ) )
-iceshelf_df_2000 = gpd.read_file(os.path.join(path2iceshelves, 'iceshelf_polygon_measures_greene_2000.2.shp' ) )
+iceshelf_df_2000 = gpd.read_file(os.path.join(path2iceshelves, 'iceshelf_polygon_measures_greene_2000.75.shp' ) )
 iceshelf_df_2015 = gpd.read_file(os.path.join(path2iceshelves, 'iceshelf_polygon_measures_greene_2015.2.shp' ) )
 iceshelf_df_2016 = gpd.read_file(os.path.join(path2iceshelves, 'iceshelf_polygon_measures_greene_2016.2.shp' ) )
 iceshelf_df_2017 = gpd.read_file(os.path.join(path2iceshelves, 'iceshelf_polygon_measures_greene_2017.2.shp' ) )
@@ -96,8 +95,15 @@ def parse_cla():
     group2 = parser.add_mutually_exclusive_group(required=False) 
     group2.add_argument("--year","-y",help='Specify year to process. Unspecified means all years',type=str )  
     parser.add_argument('--resolution','-res',help='Processed resolution',type=str,required=False,
-                            choices=('400m','1000m','downsampled'),default='1000m')
-                            
+                            # choices=('400m','1000m'),
+                            default='1000m')
+    
+    parser.add_argument('--dmgvar','-v',help='dmg varname, defaults to damage095. ',type=str,required=False,
+                            # choices=('damage095','damage095_lowerbound','damage095_upperbound'),
+                            default='damage095')
+
+    parser.add_argument('--strict',help='calculate stricter dmg values (for uncertainty) ',type=str,required=False,
+                            default='False')
     args = parser.parse_args()
     return args 
 
@@ -125,10 +131,14 @@ def setup_iceshelf_df_entry(iceshelf_name, ishelf_region, sector_ID ):
  SELECT REGION, LOAD DATA
 ------------------------------------------ '''
 
-def main( sector_ID, year=None, resolution='1000m' ):
+def main( sector_ID, year=None, resolution='1000m', dmgvar='damage095' ,strict_type=None):
 
+    # path2data = os.path.join(homedir, 'Data/NERD/dmg095_nc/data_sector/')
+    path2data = os.path.join(homedir, 'Data/NERD/data_organise/v0_forPlots/netcdf/')
+    
     # Path to save dataframe
-    path2save = os.path.join(homedir, 'Data/NERD/dmg095_nc/aggregated/')
+    # path2save = os.path.join(homedir, 'Data/NERD/dmg095_nc/aggregated/')
+    path2save = os.path.join(homedir, 'Data/NERD/data_organise/v0_forPlots/reproduced_newscript/')
 
 
     if resolution == '400m':
@@ -137,22 +147,36 @@ def main( sector_ID, year=None, resolution='1000m' ):
         filelist_dmg = [file for file in filelist_dmg if '1997' not in file]  # make sure 1997 is not included; as not processed at 400m res
         filelist_dmg.sort()
         
-    elif resolution == '1000m': 
-        filelist_dmg =  glob.glob( os.path.join(path2data,'damage095',resolution, f'dmg_sector-{sector_ID}_*.nc') )
+    elif '1000m' in resolution: # resolution == '1000m': 
+        filelist_dmg =  glob.glob( os.path.join(path2data,dmgvar,resolution, f'dmg*-{sector_ID}_*.nc') ) ## can be both dmg0995 or damage095_lowerbound
         filelist_dmg.sort()
+    else: # just get files from input path
+        filelist_dmg =  glob.glob( os.path.join(path2data, f'*-{sector_ID}_*.nc') ) 
+        filelist_dmg.sort()
+    
+    ## tmp for uncertainty (from different dmg maps)
+    if 'upperbound' in dmgvar or 'lowerbound' in dmgvar:
+        path2save = os.path.join(path2save,dmgvar)
 
+    ## tmp: other uncertainty, calculate here.
+    # stricter_type = 'd099'
+    # stricter_type = 'pct025'
+    if strict_type is not None:
+        path2save = os.path.join(path2save,f'stricter-{strict_type}')
+    
+    
     if year is None: # all years
         ## load list of files
         filenames = [os.path.basename(file) for file in filelist_dmg]
         ## retrieve available years from filenames
         year_list = [int( re.search(r'\d{4}', file).group()) for file in filenames]
-
     else: # filter filelist for desired year
         filelist_dmg = [file for file in filelist_dmg if year in file]
         year_list=[year]
         if not filelist_dmg:
             raise ValueError(f'Could not find year {year}')
 
+    # read normal dmg095 (v0)
     region_ds = (xr.open_mfdataset(filelist_dmg ,
                     combine='nested', concat_dim='time',
                     compat='no_conflicts',
@@ -160,6 +184,24 @@ def main( sector_ID, year=None, resolution='1000m' ):
             .rio.write_crs(3031,inplace=True)
             .assign_coords(time=year_list) # update year values (y,x,time)
     )
+    
+    # ## read normal dmg095 from function (v0 files)
+    ## region_ds = myf.load_nc_sector_years( os.path.join(path2data,dmgvar,resolution) , sector_ID, varName = 'dmg' ,year_list = year_list)
+    # print(region_ds.dims, region_ds)
+    
+    
+    # print(region_ds)
+    # for file in filelist_dmg:
+    #     with xr.open_mfdataset(file) as ds:
+    #         print(file, ds.dims)
+
+
+    ## ## for uncertainty dmg / new batch processed downsampling dmg095
+    ## region_ds_ramp = myf.load_nc_sector_years( os.path.join(path2data,dmgvar,resolution) , sector_ID, varName = 'dmg' ,year_list = [1997, 2000])
+    ## region_ds = myf.load_nc_sector_years( os.path.join(path2data,dmgvar,resolution) , sector_ID, varName = 'dmg' ,year_list = [2015,2016,2017,2018,2019,2020,2021])
+    ## region_ds_ramp = myf.reproject_match_grid(region_ds,region_ds_ramp)
+    ## region_ds = xr.concat([region_ds_ramp, region_ds], dim='time')
+    ## # print(region_ds)
 
     print('--- dmg dataset ----')
     year_list = list(region_ds.time.values)
@@ -168,6 +210,42 @@ def main( sector_ID, year=None, resolution='1000m' ):
     dmg_type = list(region_ds.data_vars)[0]
     print('year_list: ', year_list)
 
+    ## update dmg threshold for uncertainty
+    if strict_type is not None:
+        ## apply stricter dmg threshold to dmg map, to get a range of uncertainty
+        # (a) use d99 trheshold
+        # (b) remove lowest 25pct 
+        
+        ## A:
+        if strict_type == 'd099':
+            print('..updating dmg threshold with d099 thresholds')
+            annual_threshold = [0.02, 0.029, 0.046, 0.046, 0.046, 0.046, 0.046, 0.046, 0.046] #pct99 noise thresholds for respective sensor sources (100:10px)
+            time_values     = [1997, 2000, 2015, 2016, 2017, 2018, 2019, 2020, 2021]
+        ## B
+        if strict_type == 'pct25':
+            print('..updating dmg threshold by removing lowest 25pct pxs')
+            annual_threshold = [ 0.004854, 0.006818, 0.004863, 0.004865, 0.004867, 0.004867, 0.004867, 0.004865, 0.004876 ]
+            time_values         = [1997,    2000,       2015,        2016,  2017,       2018,   2019,       2020,   2021]
+        ## C
+        if strict_type == 'd095': ## re-apply d095 trehshold (after taking median-dmg there are pixels below the threshold)
+            print('..updating dmg threshold by re-applying d095 thhreshold')
+            annual_threshold = [ 0.016, 0.023, 0.038, 0.038, 0.038, 0.038, 0.038, 0.038, 0.038 ]
+            time_values         = [1997,    2000,       2015,        2016,  2017,       2018,   2019,       2020,   2021]
+        ## B
+        if strict_type == 'pct05':
+            print('..updating dmg threshold by removing lowest 5pct pxs')
+            annual_threshold = [0.000945, 0.000953, 0.000971, 0.000985, 0.000989, 0.000984, 0.000985, 0.000981, 0.000985]
+            time_values         = [1997,    2000,       2015,        2016,  2017,       2018,   2019,       2020,   2021]
+
+        # Update each time slice with the respective threshold
+        slicelist = []
+        for t, threshold in zip(time_values, annual_threshold):
+                tslice = region_ds.sel(time=t).where(region_ds.sel(time=t)>threshold,other=0)
+                slicelist.append(tslice) 
+        region_ds = xr.concat(slicelist,dim='time')  
+
+    # ## fill no-damage nan with 0 values, so thhat i only mask nodata-areas (and later also clip to ice shelves) 
+    region_ds= region_ds.fillna(0)
 
     ''' --------------------------------------
     Load masks: all years of Sentinel-1
@@ -177,9 +255,10 @@ def main( sector_ID, year=None, resolution='1000m' ):
 
     print('--- mask dataset ----')  
     ## locate files
+    path2mask = os.path.join(homedir, 'Data/NERD/dmg095_nc/data_sector/')
     # mask_filelist = glob.glob( os.path.join(path2data,'nodata', f'nodata_sector-{sector_ID}_*_400m.nc') ) # masks only avail at 400m
     # update: read geotiff due to projection erorr in netcdf of 2015
-    mask_filelist = glob.glob( os.path.join(path2data,'nodata','geotiff', f'nodata_sector-{sector_ID}_*_400m.tif') )
+    mask_filelist = glob.glob( os.path.join(path2mask,'nodata','geotiff', f'nodata_sector-{sector_ID}_*_400m.tif') )
     mask_filelist.sort()
     ## retrieve years from filenames
     filenames = [os.path.basename(file) for file in mask_filelist]
@@ -276,6 +355,10 @@ def main( sector_ID, year=None, resolution='1000m' ):
         print(".. done with interpolation " + str( np.round((end - start)/60 ,1) ) + 'min')
     else:
        save_subdir = '_aggregated_with_nodataMask_any/_perSector/' 
+       if not os.path.exists(os.path.join(path2save,save_subdir)):
+            print('subdir doesnt exsit, saving to original path2save dir')
+            save_subdir=''
+
     # raise RuntimeError('stop -dev')
 
     ''' --------------------------------------
@@ -439,7 +522,10 @@ if __name__ == '__main__':
     sector_ID = args.sector
     year = args.year
     resolution = args.resolution
+    dmgvar = args.dmgvar
+    strict_type = args.strict if args.strict != 'False' else None
 
     main(sector_ID, 
             year=year, 
-            resolution=resolution)   
+            resolution=resolution,
+            dmgvar=dmgvar, strict_type=strict_type)   
