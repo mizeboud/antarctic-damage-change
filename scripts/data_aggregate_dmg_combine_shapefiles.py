@@ -6,7 +6,7 @@ import glob
 import pandas as pd 
 
 
-saving=False
+saving=True
 
 
 ''' --------------
@@ -15,8 +15,22 @@ Paths
 
 homedir = '/Users/tud500158/Library/Mobile Documents/com~apple~CloudDocs/Documents/Documents - TUD500158/'
 
+# path2data = os.path.join(homedir, 'Data/NERD/dmg095_nc/aggregated/')
+# path2data = os.path.join(homedir, 'Data/NERD/dmg095_nc/aggregated/damage095_lowerbound/')
+# path2data = os.path.join(homedir, 'Data/NERD/dmg095_nc/aggregated/damage095_upperbound/')
+# path2data = os.path.join(homedir, 'Data/NERD/dmg095_nc/aggregated/stricter-d099/')
+# path2data = os.path.join(homedir, 'Data/NERD/dmg095_nc/aggregated/stricter-d095/')
+# path2data = os.path.join(homedir, 'Data/NERD/dmg095_nc/aggregated/stricter-pct25/')
+path2data = os.path.join(homedir, 'Data/NERD/dmg095_nc/aggregated/stricter-pct05/')
+# path2data = os.path.join(homedir, 'Data/NERD/dmg095_nc/aggregated/damage095_tmp/')
 
-path2data = os.path.join(homedir, 'Data/NERD/dmg095_nc/aggregated/')
+## try to get back original values
+path2data = os.path.join(homedir, 'Data/NERD/dmg095_nc/aggregated/_aggregated_with_nodataMask_any/_perSectorARCHIVE/')
+path2data = os.path.join(homedir, 'Data/NERD/data_organise/v0_forPlots/reproduced_newscript/')
+path2data = os.path.join(homedir, 'Data/NERD/data_organise/v0_forPlots/reproduced_oldscript/') ## jeej goeie
+path2data = os.path.join(homedir, 'Data/NERD/data_organise/add_2000/reproduced_oldscript/') ## also 2000
+path2data = os.path.join(homedir, 'Data/NERD/data_organise/stricter-pct05/')  ## uncertainty range
+
 
 ''' --------------
 Get Shapefiles 
@@ -28,7 +42,8 @@ sector_poly = gpd.read_file(sector_path)
 sector_ID_list = sector_poly['sector_ID'].to_list()
 
 sector_ID_list
-sector_IDs= ['ASE', 'BSE', 'EIS', 'RS', 'WIS-a','WIS-b', 'WS']
+sector_IDs= ['ASE', 'BSE', 'EIS', 'RS', 'WIS-a','WIS-b', 'WS'] ## for v0 dmg095; for stricter_uncertainty 
+# sector_IDs= ['ASE', 'BSE', 'EIS', 'RS', 'WIS-a','WIS-b', 'WS-a','WS-b'] ## for uncertainty dmg upper-lowerbnds + for new main dmg095
 
 ''' --------------
 ### SELECT SUBDIR
@@ -37,15 +52,22 @@ sector_IDs= ['ASE', 'BSE', 'EIS', 'RS', 'WIS-a','WIS-b', 'WS']
 
 ## -- ANNUAL S1/RAMP: 1000m:
 subdir = '_aggregated_with_nodataMask_any/' # strict mask; also done for lowres data 97/21 
+# subdir = ''
 fname_suffix = '_1000m.shp'
+fname_suffix = 'downsampled.shp'
 years_list = np.concatenate([np.array([1997]), np.arange(2015,2022)])
-years_list = [2000]
+years_list = np.concatenate([np.array([1997,2000]), np.arange(2015,2022)])
+# years_list = [2000] ## reprocess only single year
 
 
 ''' Update path '''
-path2agg = os.path.join(path2data, subdir, '_perSector/')
-path2save = os.path.join(path2data, subdir )
+# path2agg = os.path.join(path2data, subdir, '_perSector/')
+# path2save = os.path.join(path2data, subdir )
+path2agg = path2data
+path2save = path2data
 print('Saving to: ', path2save)
+
+# print(path2agg)
 
 ## Load file list
 df_file_list_all = glob.glob( os.path.join(path2agg, 'aggregated_dmg_per_iceshelf*.shp'))
@@ -72,6 +94,8 @@ for year in years_list:
         ## Select files from region, for specific year
         df_files = [file for file in df_file_list if region_ID in file]
         df_filename = [file for file in df_files if str(year) in os.path.basename(file)]
+        if not df_filename:
+            raise  ValueError(f'Found no file {region_ID}-{year}', df_files)
         if len(df_filename) > 1:
             raise ValueError('Found > 1 matches: ', df_filename)
         df_filename = df_filename[0]

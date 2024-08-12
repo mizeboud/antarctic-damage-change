@@ -3,6 +3,7 @@ import numpy as np
 import os
 import geopandas as gpd
 import dask 
+import argparse 
 
 # import postProcessFunctions as myf
 import myFunctions as myf
@@ -39,15 +40,6 @@ sector_path = os.path.join(homedir, 'QGis/data_NeRD/AIS_outline_sectors.shp')
 sector_poly = gpd.read_file(sector_path)
 sector_ID_list = sector_poly['sector_ID'].to_list()
 sector_ID_list.sort()
-# print(sector_ID_list)
-        
-
-# years_list = ['2015']#,'2016','2017','2018','2019','2020','2021']
-
-# variables_to_save = ['dmg095']
-# # variables_to_save = ['dmg-25px']
-# # variables_to_save = ['nodata']
-
 
 
 ''' --------------
@@ -63,7 +55,7 @@ iceshelf_flist
 
 # annual ice shelves
 iceshelf_df_1997 = gpd.read_file(os.path.join(path2iceshelves, 'iceshelf_polygon_measures_greene_1997.75.shp' ) )
-iceshelf_df_2000 = gpd.read_file(os.path.join(path2iceshelves, 'iceshelf_polygon_measures_greene_2000.2.shp' ) )
+iceshelf_df_2000 = gpd.read_file(os.path.join(path2iceshelves, 'iceshelf_polygon_measures_greene_2000.75.shp' ) )
 iceshelf_df_2015 = gpd.read_file(os.path.join(path2iceshelves, 'iceshelf_polygon_measures_greene_2015.2.shp' ) )
 iceshelf_df_2016 = gpd.read_file(os.path.join(path2iceshelves, 'iceshelf_polygon_measures_greene_2016.2.shp' ) )
 iceshelf_df_2017 = gpd.read_file(os.path.join(path2iceshelves, 'iceshelf_polygon_measures_greene_2017.2.shp' ) )
@@ -79,57 +71,103 @@ ishelf_dict = { '1997':iceshelf_df_1997,'2000':iceshelf_df_2000,'2015':iceshelf_
 }
 
 
-'''
-##############################################
-SAVING DMG NETCDFS FOR DATA PUBLICATION 
-##############################################
-'''
 
-''' --------------
-Select region/sector and corresponding tilenumbers to export
+def parse_cla():
+    """
+    Command line argument parser
 
-Available Sectors:
-'ASE', 
-'BSE', 
-'EIS' 
-'RS', 
-'WIS'--> split in WIS-a and WIS-b
-'WS' 
+    Accepted arguments:
+        Required:
+        --dir-in (-din)     : Path to input tiled data
+        --dir-out (-dout)   : Path to store netcdf/geotiff
+        --year (-y)         : Specify which year of data to load.
 
-Variables to save:
-'dmg','dmg-25px','nodata'
------------------- '''
+    :return args: ArgumentParser return object containing command line arguments
+    """
 
-# years_list = ['1997','2000'] # RAMP
-# years_list = ['2015','2016','2017','2018','2019','2020','2021'] # S1 SAR
-
-years_list = ['2000']
-
-varName = 'dmg'
-# varName = 'nodata'
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--year", "-y", help="Specify which year to export data", type=str, required=True)
+    parser.add_argument("--varname",'-v', help="Name of variable",type=str ,required=True)
+    parser.add_argument("--dir-in",'-din', help="path to find data",type=str , required=False)
+    parser.add_argument("--dir-out",'-dout', help="path to save data",type=str ,required=False)
 
 
-sector_ID_list.sort()
+    # Optional argument
+    parser.add_argument('--resolution','-res', help='Data resolution, defaults to 400m', type=str, required=False, default='400m')
+    # parser.add_argument('--sector', help='Select single sector. Default is processing all sectors', type=str, required=False, default='all')
+    parser.add_argument("--sector","-s",help='Specify sector to process',type=str, required=False,
+                            choices=('ASE', 'BSE', 'EIS', 'RS', 'WIS-a','WIS-b', 'WS', 'WS-a','WS-b'), default='all' )  
 
-save_nc = True 
-save_tif = True
 
-# set directory to save output
-path2data = os.path.join(homedir,'Data/NERD/dmg095_nc/data_sector/') # save dir
+    args = parser.parse_args()
 
-for year in years_list:
-    res='400m' # default
+    return args 
+
+def main():
+    ''' ---------------------------------------------------------------------------
+        Configuration
+    -------------------------------------------------------------- '''
+    # if arguments are not specified in command line, they are set to None
+    args = parse_cla()
+    # print(args)
+    year_to_save = args.year
+    varName = args.varname
+    tilepath_in = args.dir_in
+    path2save = args.dir_out
+    res=args.resolution
+    sector_select=args.sector
+    if sector_select in sector_ID_list:
+        sector_list = [sector_select] # process 1 sector
+    else:
+        sector_list = sector_ID_list # process all sectors
+
+
+    if not tilepath_in:
+        tilepath_in = os.path.join(homedir,f'Data/S1_SAR/tiles/dmg_tiled/dmg095/{year_to_save}-SON/')
+    if not path2save: 
+        path2save = os.path.join(homedir,'Data/NERD/dmg095_nc/data_sector/damage095/') # save dir
+    '''
+    ##############################################
+    SAVING DMG NETCDFS / GEOTIFFS
+    ##############################################
+    '''
+
+    ''' --------------
+    Select region/sector and corresponding tilenumbers to export
+
+    Available Sectors:
+    'ASE', 
+    'BSE', 
+    'EIS' 
+    'RS', 
+    'WIS'--> split in WIS-a and WIS-b
+    'WS' 
+    ------------------ '''
+
+    year = year_to_save
+
+    sector_ID_list.sort()
+
+    save_nc = True
+    save_tif = False
+
+    # set directory to save output
+    # path2data = os.path.join(homedir,'Data/NERD/dmg095_nc/data_sector/') # save dir
+
+    # for year in years_list:
+    # res='400m' # default
     if varName == 'dmg-25px':
         region_data = region_data.rename({'dmg-25px':'dmg'})
         res='1000m'
     if int(year) == 1997 or int(year) == 2000:
         res='1000m'
+        tilepath_in = os.path.join(homedir,f'Data/RAMP/RAMP_tiled/dmg_tiled/dmg095/')
 
-    for sector_ID in sector_ID_list:#['ASE']:#['WS']: #sector_ID_list:
+    for sector_ID in ['ASE']: # sector_list: # ['WS-a','WS-b']: # sector_ID_list:#['ASE']:#['WS']: #sector_ID_list:
         if sector_ID == 'WIS' : # skip WIS in favor of WIS-a and WIS-b (process in parts due to memory usage)
             continue 
-        # if sector_ID == 'WS' and res=='400m':
-        #     continue
+        if sector_ID == 'WS' and res=='400m':
+            continue
 
         
         ''' --------------
@@ -146,42 +184,36 @@ for year in years_list:
 
         print('--- \nSelected {} sector; {} tiles'.format(sector_ID, len(tileNums_select)))
 
+        ## Check if data exitsts
+        nc_filename = f'{varName}_sector-{sector_ID}_{year}-SON_{res}.nc' #nc_base + '_' + str(year_part) + '.nc'
+        tiff_file = f'{varName}_sector-{sector_ID}_{year}-SON_{res}.tif' 
+        already_exists_nc  = True if  os.path.isfile( os.path.join( path2save, nc_filename)) else False
+        already_exists_tif = True if  os.path.isfile( os.path.join( path2save, tiff_file ) ) else False
+        if (already_exists_nc and save_nc) and (already_exists_tif and save_tif):
+            print(f'.. nc & tif file for {varName}-{sector_ID}-{year} already exists -- continue')
+            continue
 
         print(f'.. loading data for {year}; {varName}')
 
-        ''' --------------
-        Load DMG or no-data 
-        ------------------ ''' 
 
-        if 'dmg' in varName:
-            path2save = os.path.join(path2data,'damage095')
-            if int(year) == 1997:
-                tilepath_in = os.path.join(homedir,'Data/RAMP/RAMP_tiled/dmg_tiled/dmg095/')
-                year_subdir=''
-            if int(year) == 2000:
-                tilepath_in = os.path.join(homedir,'Data/RAMP/RAMP_tiled_mamm/dmg095/')
-                year_subdir=''
-            else:
-                tilepath_in = os.path.join(homedir,'Data/S1_SAR/tiles/dmg_tiled/dmg095/')
-                year_subdir = f'{year}-SON'
-        if 'nodata' in varName: 
-            path2save=os.path.join(path2data,'nodata')
-            tilepath_in = os.path.join(homedir,'Data/S1_SAR/tiles/masks/')
-            year_subdir = f'{year}-SON'
-            var='nodata'
+        ''' --------------
+        Load data 
+        ------------------ ''' 
 
         ## get all files in directory 
         # year_filelist = os.listdir(os.path.join(tilepath_in,year_subdir ))
-        year_filelist = glob.glob(os.path.join(tilepath_in,year_subdir,'*.tif' ))
-        # year_filelist = glob.glob(os.path.join(tilepath_in,year_subdir,f'*{varName}.tif' ))
+        # year_filelist = glob.glob(os.path.join(tilepath_in,year_subdir,'*.tif' ))
+        year_filelist = glob.glob(os.path.join(tilepath_in,'*.tif' ))
         year_filelist.sort()
+        print(f'.. {len(year_filelist)} files')
 
         ## select tiles in region
         # if int(year) == 2000:
         #     fnames_region = [fname for fname in year_filelist if int(fname.split('tile_')[1].split('_')[0]) in tileNums_select]
         # else:
-        fnames_region = [fname for fname in year_filelist if int(fname.split('.')[0].split('tile_')[1]) in tileNums_select]
-        filelist_region  = [ os.path.join(tilepath_in,year_subdir, fname) for fname in fnames_region ]
+        fnames_region = [fname for fname in year_filelist if int(os.path.basename(fname).split('.')[0].split('tile_')[1]) in tileNums_select]
+        # filelist_region  = [ os.path.join(tilepath_in,year_subdir, fname) for fname in fnames_region ]
+        filelist_region  = fnames_region # [ os.path.join(tilepath_in, fname) for fname in fnames_region ]
 
         region_data = (xr.open_mfdataset( filelist_region,  
                     combine="nested", decode_times=False,
@@ -194,6 +226,18 @@ for year in years_list:
                     .transpose('y','x')
                     .rename({'band_data':varName})
         )
+        # print(region_data)
+        
+        ## for uncertainty dmg
+        ## # add time-dimension to xarray.DataArray
+        ## region_data = xr.DataArray( data = np.expand_dims(region_data[varName],-1),  # (y,x) to (y,x,1)
+        #                 coords={'y': (region_data["y"]),
+        #                         'x': (region_data["x"]),
+        #                         'time':([int(year)])},
+        #                 name=varName, 
+        #                 attrs=region_data.attrs, indexes=region_data.indexes # copy other properties
+        #                 ).to_dataset(name=varName)  
+        # # print(region_data)
 
 
         ''' ## Fill dmg NaN values as 0  '''
@@ -223,7 +267,7 @@ for year in years_list:
         ## Small fixes to file 
         region_data.astype(float)[varName].rio.write_nodata(np.nan, encoded=True, inplace=True) 
         # reorder dimensions ( need (y,x) without 3rd time dimension to save to netCDF that QGis can read)
-        data_da = region_data[varName].transpose('y','x')
+        data_da = region_data[varName] # .transpose('y','x')
 
         
         ''' --------------------------------------
@@ -237,30 +281,42 @@ for year in years_list:
             data_da  = data_da.rio.clip( 
                                 iceshelf_year.geometry, iceshelf_year.crs, 
                                 drop=True, invert=False)
-            # print(data_da)
-
+            region_data = region_data.rio.clip( 
+                                iceshelf_year.geometry, iceshelf_year.crs, 
+                                drop=True, invert=False)
+            print(data_da)
 
         ''' --------------------------------------
         Save netCDF/GeoTIFF
         ------------------------------------------ '''
 
-        ## Check if data exitsts
-        nc_filename = f'{varName}_sector-{sector_ID}_{year}-SON_{res}.nc' #nc_base + '_' + str(year_part) + '.nc'
-        tiff_file = f'{varName}_sector-{sector_ID}_{year}-SON_{res}.tif' 
-        already_exists = os.path.isfile( os.path.join( path2save, nc_filename ) )
+        # ## Check if data exitsts
+        # nc_filename = f'{varName}_sector-{sector_ID}_{year}-SON_{res}.nc' #nc_base + '_' + str(year_part) + '.nc'
+        # tiff_file = f'{varName}_sector-{sector_ID}_{year}-SON_{res}.tif' 
+        # already_exists = os.path.isfile( os.path.join( path2save, nc_filename ) )
         
         if save_nc:
             if not os.path.isfile( os.path.join( path2save, nc_filename ) ):
                 print('.. Saving to nectdf {} '.format(nc_filename))
                 ## do the saving
-                # data_da.to_netcdf(os.path.join(path2save,nc_filename),mode='w',format='NETCDF4')
-                delayed_obj = data_da.to_netcdf(os.path.join(path2save,nc_filename),mode='w',format='NETCDF4',compute=False)
+                # delayed_obj = data_da.to_netcdf(os.path.join(path2save,nc_filename),mode='w',format='NETCDF4',compute=False)
+                delayed_obj = region_data.to_netcdf(os.path.join(path2save,nc_filename),mode='w',format='NETCDF4',compute=False)
                 with ProgressBar():
                     results = delayed_obj.compute()
                 
         if save_tif: 
             if not os.path.isfile( os.path.join( path2save, tiff_file ) ):
                 print('.. Saving to geotiff ', tiff_file)
+                if len(region_data.dims) > 2:
+                    data_da= data_da.isel(time=0).drop('time')
+                    print(data_da.dims)
                 # save it, now with CRS and as Cloud Optimized Geotiff
                 data_da.rio.to_raster( os.path.join(path2save, tiff_file),driver="COG") 
 
+        ## close files for memory reading issues
+        data_da.close() 
+        region_data.close() 
+        
+if __name__ == '__main__':
+    # # run script
+    main()
