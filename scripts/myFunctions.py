@@ -364,9 +364,20 @@ def load_nc_sector_years( path2data, sector_ID, year_list=None, varName=None ):
             yr = int( re.search(r'\d{4}', os.path.basename(file[0])).group()) 
             # print(yr)
             with xr.open_mfdataset(file) as ds:
-                try:
-                    ds.assign_coords(time=yr)
-                except: pass
+                # print(ds)
+                if len(ds.dims) <= 2: ## time dimension doesnt exists: add
+                    # add time-dimension to xarray.DataArray
+                    ds = xr.DataArray( data = np.expand_dims(ds[varName],-1),  # (y,x) to (y,x,1)
+                                    coords={'y': (ds["y"]),
+                                            'x': (ds["x"]),
+                                            'time':([int(yr)])},
+                                    name=varName, 
+                                    attrs=ds.attrs, indexes=ds.indexes # copy other properties
+                                    ).to_dataset(name=varName)  
+                else:
+                    try:
+                        ds.assign_coords(time=yr)
+                    except: pass
                 region_list.append(ds.rio.write_crs(3031,inplace=True))
         region_ds = xr.concat(region_list,dim='time')  
         # print(region_ds.coords) 
