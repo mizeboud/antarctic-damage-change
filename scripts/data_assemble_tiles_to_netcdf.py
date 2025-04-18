@@ -87,7 +87,8 @@ def parse_cla():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--year", "-y", help="Specify which year to export data", type=str, required=True)
-    parser.add_argument("--varname",'-v', help="Name of variable",type=str ,required=True)
+    parser.add_argument("--varname",'-v', help="Name of variable",type=str ,required=True,
+                            choices=('dmg095','nodata','dmg','dmg099'))
     parser.add_argument("--dir-in",'-din', help="path to find data",type=str , required=False)
     parser.add_argument("--dir-out",'-dout', help="path to save data",type=str ,required=False)
 
@@ -122,10 +123,6 @@ def main():
         sector_list = sector_ID_list # process all sectors
 
 
-    if not tilepath_in:
-        tilepath_in = os.path.join(homedir,f'Data/S1_SAR/tiles/dmg_tiled/dmg095/{year_to_save}-SON/')
-    if not path2save: 
-        path2save = os.path.join(homedir,'Data/NERD/dmg095_nc/data_sector/damage095/') # save dir
     '''
     ##############################################
     SAVING DMG NETCDFS / GEOTIFFS
@@ -300,7 +297,8 @@ def main():
                 print('.. Saving to nectdf {} '.format(nc_filename))
                 ## do the saving
                 # delayed_obj = data_da.to_netcdf(os.path.join(path2save,nc_filename),mode='w',format='NETCDF4',compute=False)
-                delayed_obj = region_data.to_netcdf(os.path.join(path2save,nc_filename),mode='w',format='NETCDF4',compute=False)
+                # delayed_obj = region_data.to_netcdf(os.path.join(path2save,nc_filename),mode='w',format='NETCDF4',compute=False)
+                delayed_obj = region_data.to_netcdf(os.path.join(path2save,nc_filename),mode='w',compute=False)
                 with ProgressBar():
                     results = delayed_obj.compute()
                 
