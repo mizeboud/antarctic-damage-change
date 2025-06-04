@@ -28,7 +28,7 @@ All package requirements are included in the file ``requirements_pipFreeze.txt``
 
 ## General workflow
 In this study a lot of data was processed on a large spatial domain (the Antarctic ice shelves). For processing speed and computer memory issues, all data has been processed in smaller (spatial) batches. There were two main approaches used. (1) the damage detection was structured 
-[alt text](https://github.com/mizeboud/antarctic-damage-change/gridTiles.png)
+![alt text](https://github.com/mizeboud/antarctic-damage-change/gridTiles.png)
 
 ## Codefile descriptions
 
