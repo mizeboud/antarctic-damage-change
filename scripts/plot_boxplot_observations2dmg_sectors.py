@@ -22,10 +22,7 @@ import argparse
 ''' --------------
 Paths
 ------------------ '''
-# homedir = '/Users/tud500158/Library/Mobile Documents/com~apple~CloudDocs/Documents/Documents - TUD500158/'
-
-# vrlab:
-homedir = '/net/labdata/maaike/'
+homedir = '/Users/.../Documents/'
 
 path2savefig = os.path.join(homedir,'Data/NERD/plots/')
 
@@ -38,13 +35,11 @@ gridTiles_geojson_path = os.path.join(homedir,'Data/tiles/gridTiles_iceShelves_E
 gridTiles = gpd.read_file(gridTiles_geojson_path)
 
 # measures ice shelves
-# iceshelf_path_meas = os.path.join(homedir, 'QGis/Quantarctica/Quantarctica3/Glaciology/MEaSUREs Antarctic Boundaries/IceShelf/IceShelf_Antarctica_v02.shp')
 iceshelf_path_meas = os.path.join(homedir, 'Data/SHAPEFILES/IceShelf_Antarctica_v02.shp')
 iceshelf_poly_meas = gpd.read_file(iceshelf_path_meas)
 
 
 ## redefined: SECTORS for AIS
-# sector_path = os.path.join(homedir, 'QGis/data_NeRD/plot_insets_AIS_sectors.shp')
 sector_path = os.path.join(homedir, 'Data/SHAPEFILES/plot_insets_AIS_sectors.shp')
 sector_poly = gpd.read_file(sector_path)
 # sector_ID_list = sector_poly['sector_ID'].to_list()
