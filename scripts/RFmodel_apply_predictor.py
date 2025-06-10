@@ -15,17 +15,23 @@ homedir = '/Users/tud500158/Library/Mobile Documents/com~apple~CloudDocs/Documen
 
 
 ''' --------------
-Get trained RF 
+Load trained RF 
 ------------------ '''
 
-path2predictor = os.path.join(homedir,'Data/NERD/RFpredictor/0x0/') # os.path.join('../files/')
+# path2predictor = os.path.join(homedir,'Data/NERD/RFpredictor/0x0/') # os.path.join('../files/')
+path2predictor = os.path.join(homedir,'PhD/CrevasseDetection/antarctic-damage-change/files/')
 path2save = os.path.join(homedir,'Data/NERD/data_predictor/dmg_predicted/RF_unbalanced/')
 
 ''' GridSrearch output '''
 
 # RF trained on orginal data resolution (400m)
-model_name = 'RF_bestEstimator_gridSearch_2024-06-25T19:37.joblib'
-configFile = 'RFgcv_166399.ini' # renamed file
+# model_name = 'RF_bestEstimator_gridSearch_2024-06-25T19:37.joblib'
+model_name = 'RF_gridSearch_bestEstimator.joblib'
+
+''' GridSearch output '''
+## Downsampled 20x20, dres=pct095
+# configFile = 'RFgcv_166399.ini' # renamed file
+configFile = 'RF_gridSearch.ini'
 iceshelves_testset_unbalanced = ['Borchgrevink','Totten','Nivl','Fimbul','Moscow_University','Hull',
  'Abbot_3' ,'LarsenD', 'Tucker', 'Harmon_Bay', 'Abbot_1', 'Brahms', 'Voyeykov',
  'Garfield' ,'Hummer_Point','PourquoiPas', 'Porter', 'Noll', 'Alison',
@@ -39,7 +45,9 @@ loaded_rf = joblib.load(os.path.join(path2predictor,model_name))
 feature_list = list(loaded_rf.feature_names_in_)
 
 
+''' --------------
 ## Load relevant config settings
+------------------ '''
 
 config = configparser.ConfigParser(allow_no_value=True)
 config.read(os.path.join(path2predictor,configFile))
@@ -144,15 +152,15 @@ def predict_dmg(loaded_rf, data_ds, feature_list, select_years=None):
 
 ''' ----------------------
 
-    LOAD DATA
+    LOAD OBSERVATIONAL DATA
 
 ------------------------- '''
 # year_list=['2015','2016','2017','2018']
 year_list=['2015','2016','2017','2018','2019','2020','2021']
 
 ksize=None
-ksize_str = '0x0'
-# ksize=20
+ksize_str = '0x0' ## no downsampling of data: work at 400 m grid (highest resolution of damage maps )
+# ksize=20; ksize_str='20x20'## downsampling of data to regularised ISMIP grid of 8000 m.
 
 '''-----------------
 ## Load INPUT VARIABLES
@@ -163,11 +171,12 @@ ksize_str = '0x0'
 path2data = os.path.join(homedir, 'Data/NERD/data_predictor/data_sector/velocity_rema/')
 
 
+
 ''' ----------------------
 Load data: netCDFs per region, per variable
 ------------------------- '''
 
-for sector_ID in sector_ID_list: # ['ASE']: 
+for sector_ID in sector_ID_list[:2]: # ['ASE']: 
 
     ## Construct save-filename
     fname_dmg_nc = f'data_sector-{sector_ID}_dmg_predicted_{ksize_str}.nc'
@@ -262,7 +271,7 @@ for sector_ID in sector_ID_list: # ['ASE']:
     }
     y_pred_rf_da_obs.attrs = attrs_dict_dmg
 
-    # Convert to dataset (to save to netcdf)
+    # Convert to xr dataset (to save to netcdf)
     dmg_pred_ds_region = y_pred_rf_da_obs.to_dataset(name='predicted_dmg',promote_attrs=True) 
 
     print('.. Saving {}'.format(fname_dmg_nc))

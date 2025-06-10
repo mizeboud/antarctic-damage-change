@@ -15,33 +15,22 @@ import pandas as pd
 import argparse
 
 # Import user functions
-import postProcessFunctions as myf 
-# import myFunctions as myf 
+import myFunctions as myf 
 import dask
 from joblib import Parallel, delayed
 import time
 
-homedir = '/Users/tud500158/Library/Mobile Documents/com~apple~CloudDocs/Documents/Documents - TUD500158/'
-# homedir = '/net/labdata/maaike/'
+homedir = '/Users/.../'
 
 tilepath_dmg = os.path.join(homedir,'Data/S1_SAR/tiles/dmg_tiled/')
 tilepath_dmg = os.path.join(homedir,'Data/RAMP/RAMP_tiled/dmg_tiled/')
 path2savefig = os.path.join(homedir,'Data/NERD/plots_dev/')
 path2data = os.path.join(homedir,'Data/NERD/DMG_aggregated/')
-# path2nc = os.path.join(homedir, 'Data/NERD/data_predictor/') 
 gridTiles_geojson_path = os.path.join(homedir,'Data/tiles/gridTiles_iceShelves_EPSG3031.geojson')
 
-if 'tud500158' in homedir:
-    path2iceshelves = os.path.join(homedir,'Data/Greene2022_AIS_coastlines/shapefiles/annual_iceshelf_polygons/revised_measures_greene/')
-    iceshelf_path_meas = os.path.join(homedir, 'QGis/Quantarctica/Quantarctica3/Glaciology/MEaSUREs Antarctic Boundaries/IceShelf/IceShelf_Antarctica_v02.shp')
-    roi_path = os.path.join(homedir, 'QGis/data_NeRD/plot_insets_AIS_regions.shp')
-    sector_path = os.path.join(homedir, 'QGis/data_NeRD/plot_insets_AIS_sectors.shp')
-
-if 'labdata' in homedir:
-    path2iceshelves = os.path.join(homedir, 'Data/SHAPEFILES/annual_iceshelf_polygons/revised_measures_greene/')
-    iceshelf_path_meas = os.path.join(homedir, 'Data/SHAPEFILES/IceShelf_Antarctica_v02.shp')
-    roi_path = os.path.join(homedir, 'Data/SHAPEFILES/plot_insets_AIS_regions.shp')
-    sector_path = os.path.join(homedir, 'Data/SHAPEFILES/plot_insets_AIS_sectors.shp')
+path2iceshelves = os.path.join(homedir, 'Data/SHAPEFILES/annual_iceshelf_polygons/revised_measures_greene/')
+iceshelf_path_meas = os.path.join(homedir, 'Data/SHAPEFILES/IceShelf_Antarctica_v02.shp')
+sector_path = os.path.join(homedir, 'Data/SHAPEFILES/plot_insets_AIS_sectors.shp')
     
 
 ''' --------------
@@ -53,14 +42,7 @@ gridTiles = gpd.read_file(gridTiles_geojson_path)
 # measures ice shelves
 iceshelf_poly_meas = gpd.read_file(iceshelf_path_meas)
 
-# # regions of interest for AIS
-roi_poly = gpd.read_file(roi_path)
-
-region_ID_list = roi_poly['region_ID'].to_list()
-region_ID_list
-
-
-## redefined: SECTORS for AIS
+## SECTORS for AIS
 sector_poly = gpd.read_file(sector_path)
 sector_ID_list = sector_poly['sector_ID'].to_list()
 
@@ -105,10 +87,13 @@ def parse_cla():
 
     Accepted arguments:
         Required:
-        --sector (-s)     : Abbreviation of sector to process. Options: ('ASE', 'BSE', 'EIS', 'RS', 'WIS-a','WIS-b', 'WS')
+        --sector (-s)     : Abbreviation of sector to process. 
+                            Options: ('ASE', 'BSE', 'EIS', 'RS', 'WIS-a','WIS-b', 'WS')
         
         Optional:
-        ..       : ..
+        --timeframe (-t)  : Specify to process 1997 and 2021 damage values only
+        --resolution      : Specify which damage maps to load. Options: 400m or 1000m 
+        --year            : process only a single year. If not specified, all years will be loaded.
 
     :return args: ArgumentParser return object containing command line arguments
     """
@@ -122,15 +107,15 @@ def parse_cla():
     # Optional arguments
     group2 = parser.add_mutually_exclusive_group(required=False)
     group2.add_argument("--timeframe",'-t',
-                    help="Specify 'longterm' to process 1997 and 2021 at same 1000m output resolution, or 'moa' to process Pang2023 fractures",
+                    help="Specify 'longterm' to process 1997 and 2021 at same 1000m output resolution",
                          type=str, choices=('longterm','moa'))   
     group2.add_argument("--year","-y",help='Specify year to process (if not specified: all years) (at 400m res)',type=str )  
     parser.add_argument("--dtype","-d",help='Specify dmg type to process (default ''dmg095'')',type=str, required=False,
                             choices=('dmg','dmg095') , default='dmg095') 
     
     # parser.add_argument("--overlap", help='Specify anything to toggle.',type=str, required=False ) 
-    parser.add_argument('--resolution',help='Processed resolution',type=str,required=False,
-                            choices=('40:10','40:25','downsampled'))
+    parser.add_argument('--resolution',help='Resolution of dmg maps',type=str,required=False,
+                            choices=('400m','1000m'))
     parser.add_argument('--masktype','-mt',help='Specify the way of masking nodata pixels',
                             type=str,choices=('annual','any','15-21','2021'),required=False)
 
@@ -148,43 +133,37 @@ def parse_cla():
 ------------------------------------------ '''
 
 def main( region_ID, sector_ID, dmg_type = 'dmg095', 
-                timeframe=None, year=None, resolution='40:10',
+                timeframe=None, year=None, resolution='400m',
                 masktype=None,strict_type=None ):
 
-    region_ID = sector_ID 
+    region_ID = sector_ID  ## leftover from previous versions
     path2nc = os.path.join(homedir, 'Data/NERD/data_predictor/data_sector/')
+    path2nc = os.path.join(homedir, 'Data/NERD/dmg095_nc/data_sector/')
 
     # 1 Get sector polygon
     region_polygon = sector_poly[sector_poly['sector_ID'] == region_ID]
-    region_polys = sector_poly
-
     
     if timeframe is None: # all years
         
-        if resolution != 'downsampled':
-            filelist_dmg =  glob.glob( os.path.join(path2nc,'damage', 'data_sector-'+region_ID+'_dmg_*.nc') )
+        if resolution == '400m':
+            filelist_dmg =  glob.glob( os.path.join(path2nc,'damage', 'data_sector-'+region_ID+'_dmg_2*.nc') )
             filelist_dmg = [file for file in filelist_dmg if '1997' not in file] 
             region_ds = (xr.open_mfdataset(filelist_dmg )
                     .drop('spatial_ref')
                     .rio.write_crs(3031,inplace=True)
             ) 
-            # update threshold
-            region_ds['dmg095']= myf.update_stricter_dmg_threshold( region_ds['dmg'] , 0.016 ,reduce_or_mask_D='reduce') # update to no-dmg pct095 threshold tau=0.053
             
             ## load RAMP detected dmg, and reproject to 400m grid of S1 data
             region_ramp = xr.open_dataset(os.path.join(path2nc,'damage', 'data_sector-'+region_ID+'_dmg_1997.nc' ))
-            # update treshold
-            region_ramp['dmg095']= myf.update_stricter_dmg_threshold( region_ramp['dmg'] , 0.005 ,reduce_or_mask_D='reduce') # update to no-dmg pct095 threshold tau=0.016
             # reproject to 400m grid
             region_ramp = myf.reproject_match_grid(region_ds, region_ramp)
             
             ## Add to dataset
             region_ds = xr.concat([region_ramp, region_ds],dim='time') 
 
-        elif resolution == 'downsampled':
-            print('--- Loading Downsampled data ---- ')
-            # filelist_dmg =  glob.glob( os.path.join(path2nc,'dmg_downsampled/', 'data_sector-'+region_ID+'_dmg095_*.nc') )
-            filelist_dmg =  glob.glob( os.path.join(homedir,'Data/NERD/data_organise/v0_forPlots/netcdf/', 'data_sector-'+region_ID+'_dmg095_*.nc') )
+        elif resolution == '1000m': ## All data at RAMP 1000m resolution
+            print('--- Loading (Downsampled) 1000m data ---- ')
+            filelist_dmg =  glob.glob( os.path.join(path2nc,'damage/', 'data_sector-'+region_ID+'_dmg_1000m_*.nc') )
             filelist_dmg = [file for file in filelist_dmg if '1997' not in file] 
             filelist_dmg.sort()
             ## stored as (y,x) netcdfs without (time) dimension. need to open as combine=nested
@@ -197,43 +176,22 @@ def main( region_ID, sector_ID, dmg_type = 'dmg095',
             # print(region_ds)
 
             ## ## load RAMP detected dmg
-            ## # region_ramp = xr.open_dataset(os.path.join(path2nc,'damage','data_sector-'+region_ID+'_dmg_1997.nc' ))
-            region_ramp = xr.open_dataset(os.path.join(homedir,'Data/NERD/data_organise/v0_forPlots/netcdf/', 'data_sector-'+region_ID+'_dmg_1997.nc' ))
-            region_ramp['dmg095']= myf.update_stricter_dmg_threshold( region_ramp['dmg'] , 0.005 ,reduce_or_mask_D='reduce') # update to no-dmg pct095 threshold tau=0.016
-
+            region_ramp = xr.open_dataset(os.path.join(homedir,'damage/', 'data_sector-'+region_ID+'_dmg_1997.nc' ))
+            
             '''## update august2024: load RAMP mamm 2000'''
-            ds = xr.open_dataset(os.path.join(homedir,'Data/NERD/data_organise/add_2000/netcdf/', 'dmg_sector-'+region_ID+'_2000-SON_1000m.nc' )) ## is actually dmg095 but name is dmg 
+            ds = xr.open_dataset(os.path.join(path2nc,'damage/', 'dmg_sector-'+region_ID+'_2000-SON_1000m.nc' )) ## is actually dmg095 but name is dmg 
             # add time-dimension to xarray.DataArray
             region_mamm = xr.DataArray( data = np.expand_dims(ds['dmg'],-1),  # (y,x) to (y,x,1)
                             coords={'y': (ds["y"]), 'x': (ds["x"]), 'time':([2000])},
                             name='dmg095', attrs=ds.attrs, indexes=ds.indexes # copy other properties
                             ).to_dataset(name='dmg095').rio.write_crs(3031,inplace=True) 
             region_mamm = myf.reproject_match_grid(region_ramp, region_mamm).transpose('y','x','time')[[ "y", "x", "time", "dmg095"]] 
-            if not os.path.exists(os.path.join(homedir,'Data/NERD/data_organise/add_2000/netcdf/update_grid/', 'dmg_sector-'+region_ID+'_2000-SON_1000m.nc' )):
-                print('.. saving updated grid of RAMP-mamm 2000')
-                try:
-                    del region_mamm.attrs['grid_mapping']
-                except: pass
-                region_mamm.to_netcdf(os.path.join(homedir,'Data/NERD/data_organise/add_2000/netcdf/update_grid/', 'dmg_sector-'+region_ID+'_2000-SON_1000m.nc' ),mode='w',format='NETCDF4') 
-            # print(region_mamm)
-
+            
             ## Add to dataset
             ## region_ds = xr.concat([region_ramp[['dmg095']], region_ds],dim='time') 
             region_ds = xr.concat([region_ramp[['dmg095']], region_mamm[['dmg095']], region_ds],dim='time') 
             print(region_ds)
                 
-                
-    elif timeframe == 'moa':
-        dmg_type = 'fractures'
-        filelist_dmg =  glob.glob( os.path.join(path2nc,'fractures', 'data_sector-'+region_ID+'_fractures*.nc') )
-        filelist_dmg = [file for file in filelist_dmg if '1997' not in file] 
-        region_ds = (xr.open_mfdataset(filelist_dmg )
-                .drop('spatial_ref')
-                .rio.write_crs(3031,inplace=True)
-        ) 
-        # print(region_ds)
-        print(region_ds.rio.resolution())
-        # raise RuntimeError('stop -dev')
 
     elif timeframe == 'longterm': # RAMP versus S1
         ''' ----------------
@@ -244,22 +202,15 @@ def main( region_ID, sector_ID, dmg_type = 'dmg095',
         ## load S1 detected dmg (has no-dmg filled as 0)
         nc_file = 'data_sector-'+region_ID+'_dmg-25px_2021.nc'
         region_ds = xr.open_dataset(os.path.join(path2nc,'damage', nc_file) ) # has no-dmg filled as 0
-        # update threshold
-        # for S1 processed 40m25px tau_mean=0.030, tau095=0.041 (so update 0.011)
-        region_ds['dmg095']= myf.update_stricter_dmg_threshold( region_ds['dmg'] , 0.011 ,reduce_or_mask_D='reduce') # update to no-dmg pct095 threshold tau=0.053
-
+ 
         ## load RAMP detected dmg
         region_ramp = xr.open_dataset(os.path.join(path2nc,'damage','data_sector-'+region_ID+'_dmg_1997.nc' ))
-        # update treshold
-        region_ramp['dmg095']= myf.update_stricter_dmg_threshold( region_ramp['dmg'] , 0.005 ,reduce_or_mask_D='reduce') # update to no-dmg pct095 threshold tau=0.016
-        
+
         ## Add to dataset
         region_ds = xr.concat([region_ramp, region_ds],dim='time') 
 
-    if year == '1997': # needed to process 1997 once again, after updating the ice shelf geometries.
-        year_list = [1997]
-    elif year == '2000':
-        year_list = [2000]
+    if year:
+        year_list = [int(year)]
     else:
         year_list = list(region_ds.time.values) # can be either all years 2015-2021, or 1997&2021 for when processing lonogterm lowres
         print('year_list is ', year_list)
@@ -277,9 +228,9 @@ def main( region_ID, sector_ID, dmg_type = 'dmg095',
             annual_threshold = [0.000945, 0.000953, 0.000971, 0.000985, 0.000989, 0.000984, 0.000985, 0.000981, 0.000985] ## values calculated in GEE
             time_values         = [1997,    2000,       2015,        2016,  2017,       2018,   2019,       2020,   2021]
         ## B
-        if strict_type == 'pct25':
-            print('-- updating dmg threshold by removing lowest 25pct pxs')
-            annual_threshold = [ 0.004854, 0.006818, 0.004863, 0.004865, 0.004867, 0.004867, 0.004867, 0.004865, 0.004876 ] ## values calculated in GEE
+        if strict_type == 'bias':
+            print('-- updating dmg threshold by removing sensor bias')
+            annual_threshold = [ 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.0015, 0.001 ] 
             time_values         = [1997,    2000,       2015,        2016,  2017,       2018,   2019,       2020,   2021]
 
         # Update each time slice with the respective threshold (just mask out pixels, do not change Dsignal)
@@ -331,14 +282,6 @@ def main( region_ID, sector_ID, dmg_type = 'dmg095',
         # ## Option 1: Apply mask to BOTH 1997 (ramp) AND 2021 (S1) (select nodata mask of 2021)
         region_ds = region_ds.where(region_masks.sel(time=2021) == 0) # if the mask has value 0 it means VALID data (this is counter intuitive, forgive me)
 
-        # ## Option 2a: If filling 2021 with avaialble data from 2015-2020, 
-        # # this should also change the mask that is applied to RAMP
-        # # -- therefore, mask out pxs where all years have nodata// keep px where any year as valid data
-        # # Number of available years:
-        # # if all of them have nodata, the sum(mask) == ymax at those areas
-        # # so all pxiels that have any valid value in the time range, have sum(mask) < ymax (keep these)
-        ## region_ds = region_ds.where(region_masks.sum(dim='time')  < ymax )
-        # NB: no because now whole workflow of filling nan with -999 and replacing 2021nandata with earlier dates goes amiss
 
     elif masktype == '15-21':
         print('.. applying 15-21 nodata masks')
@@ -403,7 +346,7 @@ def main( region_ID, sector_ID, dmg_type = 'dmg095',
         region_ds = xr.concat ( region_years_masked, dim='time' )
     
     else:
-        raise ValueError('Handle aggregation without nodataMask (should be doable but need to fix code here)')
+        raise ValueError('Handle aggregation without nodataMask not implemented')
 
     
     ''' --------------------------------------
@@ -416,8 +359,6 @@ def main( region_ID, sector_ID, dmg_type = 'dmg095',
     ''' 2. Mask areas where all years have nodata, and fill those with -999 '''
     ## Mask wehere all years have nodata (only relevant for some iceshelves like ROSS)
     # And fill with -999
-    ## region_ds = region_ds.where( np.isnan(data_available_year).sum(dim='time') < ymax ) # puts nan in out-of-tile areas (where mask is NaN instead of 0/1)
-    ## region_ds = xr.where( ~np.isnan(region_ds) ,region_ds, -999, keep_attrs=True)
     region_ds =  region_ds.where( np.isnan(data_available_year).sum(dim='time') < ymax , -999) # mask and fill in 1 step
 
 
@@ -425,21 +366,21 @@ def main( region_ID, sector_ID, dmg_type = 'dmg095',
     Update: changed order. First filled all-yr-nodata with -999, then interpolate (so interpolation is presumably faster)'''
     interpol_yrs = False
     fill2val = False
-    if interpol_yrs:
-        print('..interpolating temporal gaps')
-        start = time.time()
-        ## INTERPOLATE S1-NAN VALUES: 
-        # interpolates nodata-areas between available years (temporal) 
-        # Extents/extrapolates for where only one-sided info. 
-        region_ds_s1 = region_ds.drop_sel(time=1997).chunk(dict(time=-1)) 
-        region_ds_s1 = region_ds_s1.interpolate_na(dim='time',method='linear',fill_value="extrapolate")
-        region_ds = xr.concat([region_ds.sel(time=1997), region_ds_s1],dim='time')
+    # if interpol_yrs:
+    #     print('..interpolating temporal gaps')
+    #     start = time.time()
+    #     ## INTERPOLATE S1-NAN VALUES: 
+    #     # interpolates nodata-areas between available years (temporal) 
+    #     # Extents/extrapolates for where only one-sided info. 
+    #     region_ds_s1 = region_ds.drop_sel(time=1997).chunk(dict(time=-1)) 
+    #     region_ds_s1 = region_ds_s1.interpolate_na(dim='time',method='linear',fill_value="extrapolate")
+    #     region_ds = xr.concat([region_ds.sel(time=1997), region_ds_s1],dim='time')
 
-        save_subdir = '_aggregated_with_nodataMask_annual_interpol'
-        end = time.time()
-        print(".. done with interpolation " + str( np.round((end - start)/60 ,1) ) + 'min')
-    # else:
-    #     save_subdir = '_aggregated_with_nodataMask_annual'
+    #     save_subdir = '_aggregated_with_nodataMask_annual_interpol'
+    #     end = time.time()
+    #     print(".. done with interpolation " + str( np.round((end - start)/60 ,1) ) + 'min')
+    # # else:
+    # #     save_subdir = '_aggregated_with_nodataMask_annual'
         
     if fill2val:
         ''' 1b '''
@@ -451,7 +392,7 @@ def main( region_ID, sector_ID, dmg_type = 'dmg095',
     SELECT ICESHELVES IN REGION - per year
     ------------------------------------------ '''
 
-    path2save = os.path.join(homedir,'Data/NERD/data_organise/dmg_obs_aggregated_iceShelves_1000m/') 
+    path2save = os.path.join(homedir,'Data/NERD/dmg_aggregated/') 
     path2save = os.path.join(path2save, save_subdir) # for datamask approach
 
     print('Saving to: ', path2save)
@@ -460,11 +401,10 @@ def main( region_ID, sector_ID, dmg_type = 'dmg095',
         print('--')
         print(year)
 
-        df_filename = 'aggregated_dmg_per_iceshelf_' + region_ID +  '-' + str(year) + '.shp'
         if timeframe:
             df_filename = 'aggregated_dmg_per_iceshelf_' + region_ID +  '-' + str(year) + '_1000m.shp'
-        if resolution == 'downsampled':
-            df_filename = 'aggregated_dmg_per_iceshelf_' + region_ID +  '-' + str(year) + '_downsampled.shp'
+        else:
+            df_filename = 'aggregated_dmg_per_iceshelf_' + region_ID +  '-' + str(year) + '_' + resolution + '.shp'
 
         # check if file exists:
         ## Chekc if predicted-dmg file already exists
@@ -635,13 +575,7 @@ if __name__ == '__main__':
 
     ''' ---------------------------------------------------------------------------
     Command Line configuration
-    Run script as "python path/to/script.py --sector sector_ID
-    Note:
-    - Processing sector-wise can (atm) only be done for low resolution (1000m), as only these have been saved into netCDF files per sector
-
-    Additional options:
-    --timeframe longterm :  to process 1997 and 2021 damage values at 1000m resolution
-    --year 1997         :  implemented to process 1997 individually once more
+    Run script as "python path/to/script.py --sector sector_ID  --....
 
     -------------------------------------------------------------- '''
     
@@ -655,9 +589,6 @@ if __name__ == '__main__':
     year = args.year
     resolution = args.resolution
     masktype = args.masktype
-    # call main function
-    # if sector_ID and not timeframe:
-    #     raise ValueError('Selected sector-processing but currently can only do so for 1000m res; so also specify timeframe/update code')
     strict_type = args.strict if args.strict != 'False' else None
     
     main(region_ID ,sector_ID, dmg_type=dmg_type, 
