@@ -1,5 +1,5 @@
 */__pycache__/
 */archive/
 */.DS_Store
-tmp/
-.venv/
+
+.DS_Store
