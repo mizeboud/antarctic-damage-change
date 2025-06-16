@@ -11,16 +11,15 @@ import json
 # Import user functions
 import myFunctions as myf 
 
-homedir = '/Users/tud500158/Library/Mobile Documents/com~apple~CloudDocs/Documents/Documents - TUD500158/'
+homedir = '/Users/.../'
 
 
 ''' --------------
 Load trained RF 
 ------------------ '''
 
-# path2predictor = os.path.join(homedir,'Data/NERD/RFpredictor/0x0/') # os.path.join('../files/')
-path2predictor = os.path.join(homedir,'PhD/CrevasseDetection/antarctic-damage-change/files/')
-path2save = os.path.join(homedir,'Data/NERD/data_predictor/dmg_predicted/RF_unbalanced/')
+path2predictor = os.path.join(homedir,'files/')
+path2save = os.path.join(homedir,'Data/NERD/data_predictor/dmg_predicted/.../')
 
 ''' GridSrearch output '''
 

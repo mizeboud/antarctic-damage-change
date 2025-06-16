@@ -1,37 +1,16 @@
-# Script that trains&test RandomForest predictor and evaluates using spatial k-fold CrossValidation
-
+# Script to apply trained RF on ISMIP data to predict damage
 import os
-# import rioxarray as rioxr
-# import geopandas as gpd
-# import matplotlib.pyplot as plt
 import numpy as np
-# import glob
 import xarray as xr
-# import matplotlib.patches as mpatches
-
-# import rasterio as rio
-# import pandas as pd 
-
-
-# from sklearn.metrics import r2_score
-# from joblib import dump, load
 import joblib
 
 # Import user functions
-# import postProcessFunctions as myf 
 import myFunctions as myf 
 
 import time
-# import datetime
 import configparser
-# import json
-# import ast
-# import sys
 import glob
-# import dask
-
 import cftime as cft
-# import seaborn as sns
 
 
 import argparse
