@@ -530,6 +530,9 @@ def load_nc_sector_years( path2data, sector_ID, year_list=None, varName=None ):
     filelist_var_all = [file for file in filelist_dir if varName in file]
     filelist_var_all.sort()
 
+    if not filelist_var_all:
+        print(f'no files found for {varName} at', path2data)
+
     ## select files for all/specified years 
     if year_list is None: # all years
         ## load list of files
