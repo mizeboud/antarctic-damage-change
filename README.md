@@ -13,13 +13,12 @@ In this project, we
 # About this repository
 This repository provides code relevant to the referenced manuscript. This includes code to reproduce the Random Forest (RF) model development and reproduce figures in the manuscript, but does not include code on the damage detection that has been done. The full code for the used damage detection method, NeRD, is available at [github.com/mizeboud/NormalisedRadonTransform](https://github.com/mizeboud/NormalisedRadonTransform).
 
-- config_files: files with settings used in scripts
-- data_demo: this folder contains example data to run a few of the scripts/notebooks
-- files: this folder contains necessary files to run the included example
-- notebooks: example notebooks of generating figures/plots of the data
-- scripts: processing of data, training random forest regression model
+- `config_files`: files with settings used in scripts
+- `data_demo`: this folder contains some example data relevant to the scripts/notebooks, to give an idea of what it looks like. However, the full datasets are stored at the 4TU Research Data Repository (links added below). The scripts and notebooks in this repository cannot be run without the full datasets.
+- `files`: this folder contains necessary files to run code. Including used noise threshold for processing of detected damage, and the trained Random Forest model. 
+- `notebooks`: example notebooks of generating figures/plots of the data.
+- `scripts`: processing of data, training random forest regression model
 
-This repository contains example dataset to run the scripts related to the Random Forest model, but the full datasets are stored at the 4TU Research Data Repository (links added below).
 
 # Installation
 The code has been developed on ``python version 3.9``. We've experienced version issues when using python 3.10, and higher is untested.
