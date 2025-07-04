@@ -3,10 +3,10 @@ import xarray as xr
 import glob
 import numpy as np
 import os
-import geopandas as gpd 
+import geopandas as gpd
 import rasterio as rio
 # import warnings
-import re 
+import re
 import dask
 
 # python file with useful functions to import
@@ -16,7 +16,7 @@ def get_tilelist_region(region_polys, sector_ID, gridTiles=None):
     It returns a list of tileNumbers that intersects that region.
     These tileNumbers correspond to the number tile_N in local data filenames
     '''
-    if gridTiles is None:  
+    if gridTiles is None:
         try:
             gridTiles_geojson_path = os.path.join('./files/gridTiles_iceShelves_EPSG3031.geojson')
             print('No gridTiles file specified, reading shapefile to geopandas.Dataframe from: \n {}'.format(gridTiles_geojson_path))
@@ -42,12 +42,12 @@ def clip_da_to_iceshelf(data_da, iceshelf_polygon_gpd,drop=False):
 
 def calc_nominal_strain(vx, vy, length_scale_px=1 ,version2 = None , dx=None ):
     '''Calculate nominal strain rate based on x and y velocity grids (data tiles per year)
-    
+
     Input
     -----
     Should be xr.DataArray.
-    Version2     : implemented the calculation of effecitve strain and individual strain components. For backwards compability, need to specify this. 
-    length_scale : Integer, it represnts the number of pixels to take as length scale. 
+    Version2     : implemented the calculation of effecitve strain and individual strain components. For backwards compability, need to specify this.
+    length_scale : Integer, it represnts the number of pixels to take as length scale.
 
     Output
     ------
@@ -68,7 +68,7 @@ def calc_nominal_strain(vx, vy, length_scale_px=1 ,version2 = None , dx=None ):
         if np.abs(dx) != np.abs(dy):
             raise ValueError("x and y resolution are not the same; {} and {} -- code update required".format(np.abs(dx), np.abs(dy) ))
 
-    ##  Length scale settings 
+    ##  Length scale settings
     px  = length_scale_px   # number of pixels to shift
     res = np.abs(dx)*px     # spatial resolution of gradient in grid
 
@@ -87,8 +87,8 @@ def calc_nominal_strain(vx, vy, length_scale_px=1 ,version2 = None , dx=None ):
     ## Calculate principal strains
     emax_xr = (exx+eyy)*0.5 + np.sqrt(np.power(exx-eyy,2)*0.25+np.power(exy,2)) # (x,y,time)
     emax = emax_xr.squeeze() # (x,y)
-    emin_xr = (exx+eyy)*0.5 - np.sqrt(np.power(exx-eyy,2)*0.25+np.power(exy,2)) 
-    emin = emin_xr.squeeze() 
+    emin_xr = (exx+eyy)*0.5 - np.sqrt(np.power(exx-eyy,2)*0.25+np.power(exy,2))
+    emin = emin_xr.squeeze()
 
     ## Calculate effecitve strain rate
     # For shallow ice approximation, vertical shear is neglected. Refer to Emetc et al. 2018
@@ -121,17 +121,17 @@ def calc_nominal_strain(vx, vy, length_scale_px=1 ,version2 = None , dx=None ):
 
 
 def aggregate_region_ds_iceshelf( region_ds, varname , iceshelf_polygon_df, drop_clipped=False ):
-    ''' 
+    '''
     Function aggregates the spatial data within the specified (iceshelf) polygons to a single 1D np.array.
     Any spatial information is lost. NaN values are kept, to be able to combine multiple variables within the same region at a later stage.
-    
+
     The output is of shape (Npixels , t) where t is the number of years available in the data.
 
     To do: implement reading of annual iceshelf polygons (currently working with a single shapefile for all years)
 
     Input
     -----
-    region_ds           : xarray.Dataset of (y,x,time). 
+    region_ds           : xarray.Dataset of (y,x,time).
     varname             : name of variable in dataset
     iceshelf_polygon_df : geopandas.DataFrame of polygon to clip data to
     drop_clipped        : If True:  Remove all pixels outside of polygon from array
@@ -139,7 +139,7 @@ def aggregate_region_ds_iceshelf( region_ds, varname , iceshelf_polygon_df, drop
 
     Output
     ------
-    data_iceshelf_1d_yr     : numpy array of shape (Nsamples,y). Where y is the number of years in the 'time' dimension of region_ds 
+    data_iceshelf_1d_yr     : numpy array of shape (Nsamples,y). Where y is the number of years in the 'time' dimension of region_ds
     '''
 
     # set up empty list
@@ -149,21 +149,21 @@ def aggregate_region_ds_iceshelf( region_ds, varname , iceshelf_polygon_df, drop
     years = region_ds['time'].values # array of years in dataSet
 
     # Aggregate annual data
-    for year in years: 
+    for year in years:
 
         # -- get annual data
         current_yr_da  = region_ds.sel(time=year)[varname] # specifying variable translates xr.dataSet to xr.dataArray
-        
+
         # -- clip to iceshelf
-        current_yr_iceshelf  = clip_da_to_iceshelf(current_yr_da,  iceshelf_polygon_df, drop=drop_clipped) 
-        
+        current_yr_iceshelf  = clip_da_to_iceshelf(current_yr_da,  iceshelf_polygon_df, drop=drop_clipped)
+
         # -- aggregate values to 1D np.array
         values_yr  = current_yr_iceshelf.values.reshape( -1,1) # extract values (matrix to array)
 
         # -- store in list
         values_yearList.append(values_yr)  # list with yearly np.array
-    
-    # merge list of annual values (1D array) to a np.array 
+
+    # merge list of annual values (1D array) to a np.array
     if len(values_yearList) > 1:
         data_iceshelf_1D_yrs = np.concatenate( values_yearList , axis=1) # shape (Npx, Nyrs)
     else:
@@ -174,7 +174,7 @@ def aggregate_region_ds_iceshelf( region_ds, varname , iceshelf_polygon_df, drop
 
 
 def fill_nan_cdata(xdata,ydata,cdata,fill_value=-999):
-    ''' Remove pixels where x/y data have nodata, but 
+    ''' Remove pixels where x/y data have nodata, but
     fill pixels where cdata has nodata with a distinct value
     '''
 
@@ -199,7 +199,7 @@ def reproject_match_grid( ref_img_da, img_da , resample_method=rio.enums.Resampl
     dims = img_da.dims
     ref_img_da = ref_img_da.transpose('time','y','x') # CRS is alreadyy written .rio.write_crs(3031, inplace=True)
     img_da = img_da.transpose('time','y','x')
-    
+
     # -- reproject (even though same crs) and match grid (extent, resolution and projection)
     img_repr_match = img_da.rio.reproject_match(ref_img_da,resampling=resample_method,nodata=nodata_value) # need to specify nodata, otherwise fills with (inf) number 1.79769313e+308
 
@@ -208,7 +208,7 @@ def reproject_match_grid( ref_img_da, img_da , resample_method=rio.enums.Resampl
         "y": ref_img_da.y,
         "x": ref_img_da.x,
     })
-    
+
     return img_repr_match.transpose(*dims) # transpose dimension order back to original
 
 def repeat_static_variable_timeseries( region_ds , varname_to_repeat ):
@@ -236,7 +236,7 @@ def clip_and_aggregate_to_df( region_ds, iceshelf_polygon_gpd):
     - Temporaly static variables should already be repeated, to match datashape
     - Clip 2D to ice shelf (TO DO: clip to annual ice shelf) (2D xarray)
     - Reshape to 1D by xarray.stack (spatial information is retained)
-    - Remove all pixels that have NaN value in any one of the variables (TO DO: do this per year, to account for changing ice shelf polygon) 
+    - Remove all pixels that have NaN value in any one of the variables (TO DO: do this per year, to account for changing ice shelf polygon)
     - Format arrays to a pandas dataFrama
     --------------'''
 
@@ -251,16 +251,16 @@ def clip_and_aggregate_to_df( region_ds, iceshelf_polygon_gpd):
 
     # Flatten the nested multi-index to just column values -- automatically generates a 'year' value for every sample
     data_pxs_df = data_pxs_df.reset_index(level=['time','x','y']) # 18767504 rows
-    # Drop spatial ref (has not data acutally) 
+    # Drop spatial ref (has not data acutally)
     data_pxs_df = data_pxs_df.drop(['spatial_ref'],axis=1)
     # For now: drop x and y values; For spatial k-fold: do not drop x and y
     # data_pxs_df = data_pxs_df.drop(['x','y'],axis=1)
 
     ''' Drop NaN pixels:
-    Pandas drops all rows that contain missing values. 
+    Pandas drops all rows that contain missing values.
     - This means that if any variable has a NaN value, that px is dropped.
     --> should make sure to fill NaN values for variables before this step (e.g. dmg NaN is set to 0; filling of REMA gaps)
-    - Since I have rows for px per year, this means that if I would have clipped the data to annual ice shelf polygons, the number of pixels per year can vary.  
+    - Since I have rows for px per year, this means that if I would have clipped the data to annual ice shelf polygons, the number of pixels per year can vary.
     '''
     data_pxs_df.dropna(axis='index',inplace=True) # Drop rows which contain missing values.
     data_pxs_df.head()
@@ -288,13 +288,13 @@ def downsample_dataArray_withoutD0( region_ds , ksize=3, boundary_method='pad', 
 
     # Get all dmg variables within array (e.g. 'dmg' and 'dmg095' for updated thresholds)
     all_dmg_vars = [varname for varname in list(region_ds.data_vars) if 'dmg' in varname]
-    
+
     # Fill dmg=0 temporarily with np.nan, so that during downsampling these values are not considered
     for dmg_var in all_dmg_vars:
         region_ds[dmg_var] = region_ds[dmg_var].where(region_ds[dmg_var]>0, other=np.nan)
 
     if downsample_func == 'mean':
-        region_ds_coars  = region_ds.coarsen(x=ksize,y=ksize,boundary=boundary_method).mean() # mean downsampling 
+        region_ds_coars  = region_ds.coarsen(x=ksize,y=ksize,boundary=boundary_method).mean() # mean downsampling
 
     if downsample_func == 'median':
         region_ds_coars  = region_ds.coarsen(x=ksize,y=ksize,boundary=boundary_method).median() # median downsampling
@@ -305,9 +305,9 @@ def downsample_dataArray_withoutD0( region_ds , ksize=3, boundary_method='pad', 
 
 def calculate_velo_strain_features(data_ds, velocity_names=('xvelsurf','yvelsurf'), length_scales=['1px']):
     ''' Calculate velocity from horizontal vx and vy components, multiple strain components and temporal  change of velocity and strain magnitude.
-    
+
     Returns 2 datasets:
-    
+
     data_velo_strain    :   contains velocity magnitude 'v' and 'deltaV' (max annual velocity change with smoothened by 3-yrs trailing window)
     region_ds_roll      :   contains strain components:
                             - max and min principal strains, emax and emin
@@ -315,7 +315,7 @@ def calculate_velo_strain_features(data_ds, velocity_names=('xvelsurf','yvelsurf
                             - longitudonal (elon), transverse (etrans) and shear (eshear) strain
                             - deltaEmax (max annual change of emax smoothened by 3-yrs trailing window)
      '''
-    var_name_vx, var_name_vy = velocity_names 
+    var_name_vx, var_name_vy = velocity_names
 
     ''' --------------
     Calculate velocity
@@ -329,27 +329,27 @@ def calculate_velo_strain_features(data_ds, velocity_names=('xvelsurf','yvelsurf
     Calculate Strain
     ------------------ '''
     # strain on multiple lenthscale -- version2
-    
-    for scale_name in length_scales: 
+
+    for scale_name in length_scales:
         lscale = int(scale_name.strip('px'))
 
         # calculate
-        emax,  emin, e_eff, strain_components  = calc_nominal_strain(data_ds[var_name_vx], data_ds[var_name_vy], 
-                                                                            length_scale_px=lscale , 
+        emax,  emin, e_eff, strain_components  = calc_nominal_strain(data_ds[var_name_vx], data_ds[var_name_vy],
+                                                                            length_scale_px=lscale ,
                                                                             version2 = True)
         elon,  etrans,  eshear  = strain_components
-        
+
         # make dataset
-        region_ds_strain =  [   emax.to_dataset( name='emax_'+str(lscale)+'px') , 
-                                emin.to_dataset( name='emin_'+str(lscale)+'px') , 
-                                e_eff.to_dataset(name='e_eff_'+str(lscale)+'px') , 
-                                elon.to_dataset( name='elon_'+str(lscale)+'px') , 
-                                etrans.to_dataset(name='etrans_'+str(lscale)+'px') , 
-                                eshear.to_dataset(name='eshear_'+str(lscale)+'px') 
+        region_ds_strain =  [   emax.to_dataset( name='emax_'+str(lscale)+'px') ,
+                                emin.to_dataset( name='emin_'+str(lscale)+'px') ,
+                                e_eff.to_dataset(name='e_eff_'+str(lscale)+'px') ,
+                                elon.to_dataset( name='elon_'+str(lscale)+'px') ,
+                                etrans.to_dataset(name='etrans_'+str(lscale)+'px') ,
+                                eshear.to_dataset(name='eshear_'+str(lscale)+'px')
         ]
         region_ds_strain = xr.merge(region_ds_strain)
         print('.. calculated strain variables ', list(region_ds_strain.keys()) )
-        
+
         ## Add minimal (needed for temporal calculations)
         data_ds = xr.merge([data_ds, emax.to_dataset( name='emax_'+str(lscale)+'px') ] )
 
@@ -357,7 +357,7 @@ def calculate_velo_strain_features(data_ds, velocity_names=('xvelsurf','yvelsurf
         data_velo_strain = xr.merge([region_da_v.to_dataset(name='v'), region_ds_strain])
 
         ''' ------------
-        Calculate temporal values 
+        Calculate temporal values
         ---------------- '''
 
         ## Calculate difference per year (first year is dropped)
@@ -366,11 +366,11 @@ def calculate_velo_strain_features(data_ds, velocity_names=('xvelsurf','yvelsurf
 
         ## Get rolling-max diff of past 3 years. Set center=False so the window is a trailing window i-2 to i
         ## NB: with min_periods=1, the first year will have the same values as itself
-        region_ds_roll = region_ds_diff[['deltaEmax','deltaV']].rolling(time=3, 
+        region_ds_roll = region_ds_diff[['deltaEmax','deltaV']].rolling(time=3,
                                 center=False, min_periods=1).max().rename(
                                 {'deltaEmax':'dEmax_'+scale_name,
                                 # 'deltaV':'dV_'+scale_name
-                                }) 
+                                })
 
         ## add to dataset
         # data_ds = xr.merge([data_ds, region_ds_roll])
@@ -391,7 +391,7 @@ def make_regular_grid_for_ds(ds, grid_res):
             data=np.ones( (len(t_seq), len(y_seq),len(x_seq) ) ), # dummy values
             dims=["time", "y", "x"],
             coords=dict( # proper coordinate/time values
-                time=t_seq, 
+                time=t_seq,
                 y=y_seq,
                 x=x_seq,
             ),
@@ -422,7 +422,7 @@ def drop_spatial_ref(ds):
         ds = ds.drop('spatial_ref')
     except:
         pass
-    return ds 
+    return ds
 
 
 
@@ -469,12 +469,12 @@ def make_ais_grid( grid_res):
             description="DummyAISgrid",
         ),
     ).rio.write_crs(3031)
-    return ais_dummy 
+    return ais_dummy
 
 
 def reprj_regions_to_ais_grid(ais_da, img_da):
     img_da.rio.write_crs(3031, inplace=True)
-    
+
     # -- reproject (even though same crs) and match grid (extent, resolution and projection)
     img_repr_match = img_da.rio.reproject_match(ais_da,resampling=rio.enums.Resampling.nearest,nodata=np.nan) # need to specify nodata, otherwise fills with (inf) number 1.79769313e+308
 
@@ -507,15 +507,15 @@ def update_stricter_dmg_threshold( dmg_da , dmg_threshold ,reduce_or_mask_D='red
     if reduce_or_mask_D == 'reduce':
         if verbose:
             print("..Applying stricter threshold to dmg values (D = D - threshold): {}".format(dmg_threshold))
-        
+
         # --lower dmg value
         region_da_dmg_prune = dmg_da - dmg_threshold # region_ds_dmg - d_tresh
         region_da_dmg_prune = region_da_dmg_prune.where(region_da_dmg_prune > 0, other=0) # .rename('dmg_prune') # sets other px to 0 -- because I dont want to remove NaN px too early
 
     elif reduce_or_mask_D == 'mask':
-        if verbose: 
-            print("..Applying stricter threshold to dmg values (D = D where D < threshold): {}".format(dmg_threshold)) 
-        # --do not reduce d-value, only mask low values 
+        if verbose:
+            print("..Applying stricter threshold to dmg values (D = D where D < threshold): {}".format(dmg_threshold))
+        # --do not reduce d-value, only mask low values
         # (NB: need to be very sure that you want this, as it violates the NERD dmg-signal consistency w.r.t other data sources)
         region_da_dmg_prune = dmg_da.where(dmg_da['dmg'] > dmg_threshold, other=0) # .rename('dmg_prune') # sets other px to 0 -- because I dont want to remove NaN px too early
 
@@ -533,7 +533,7 @@ def load_nc_sector_years( path2data, sector_ID, year_list=None, varName=None ):
     if not filelist_var_all:
         print(f'no files found for {varName} at', path2data)
 
-    ## select files for all/specified years 
+    ## select files for all/specified years
     if year_list is None: # all years
         ## load list of files
         filenames = [os.path.basename(file) for file in filelist_var_all]
@@ -563,15 +563,15 @@ def load_nc_sector_years( path2data, sector_ID, year_list=None, varName=None ):
     except ValueError: # read year by year, then concatenate
         region_list = []
         for file in filelist_var:
-            yr = int( re.search(r'\d{4}', os.path.basename(file[0])).group()) 
+            yr = int( re.search(r'\d{4}', os.path.basename(file[0])).group())
             # print(yr)
             with xr.open_mfdataset(file) as ds:
                 try:
                     ds.assign_coords(time=yr)
                 except: pass
                 region_list.append(ds.rio.write_crs(3031,inplace=True))
-        region_ds = xr.concat(region_list,dim='time')  
-        # print(region_ds.coords) 
+        region_ds = xr.concat(region_list,dim='time')
+        # print(region_ds.coords)
     return region_ds
 
 def downsample_obs_data(region_ds,ksize):
@@ -582,7 +582,7 @@ def downsample_obs_data(region_ds,ksize):
 
     # with dask.config.set(**{'array.slicing.split_large_chunks': True}): # gives error?
     with dask.config.set(**{'array.slicing.split_large_chunks': False}): ## accept large chunks; ignore warning
-        region_ds = downsample_dataArray_withoutD0(region_ds, ksize=ksize, 
+        region_ds = downsample_dataArray_withoutD0(region_ds, ksize=ksize,
                                     boundary_method='pad',downsample_func='mean', skipna=False)
     new_res = ksize*400
     print('.. resolution {}m downsampled to {}m'.format(dx, new_res))
@@ -591,11 +591,11 @@ def downsample_obs_data(region_ds,ksize):
     # Check if grid resolution is regular (otherwise, adjust)
     if np.abs(int(region_ds.rio.resolution()[0]) ) != np.abs( int(region_ds.rio.resolution()[1]) ):
         print( "x and y resolution are not the same; {} and {} -- resample to regular grid of {}m".format(
-                    np.abs(int(region_ds.rio.resolution()[0])), 
+                    np.abs(int(region_ds.rio.resolution()[0])),
                     np.abs(int(region_ds.rio.resolution()[1])), new_res ))
-        
+
         grid_dummy = make_regular_grid_for_ds(region_ds, grid_res=new_res)
         region_ds.rio.write_crs(3031, inplace=True)
-        region_ds = reproject_match_grid( grid_dummy, region_ds )         
+        region_ds = reproject_match_grid( grid_dummy, region_ds )
 
     return region_ds
