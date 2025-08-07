@@ -21,10 +21,7 @@ Author: M. Izeboud, Dec/2023, TU Delft
 Set paths
 ---------'''
 
-## Local
-homedir = '/Users/tud500158/Library/Mobile Documents/com~apple~CloudDocs/Documents/Documents - TUD500158/'
-## VRlab
-# homedir = '/net/labdata/maaike/'
+homedir = '/Users/.../Documents/'
 
 
 ''' --------------
@@ -146,21 +143,17 @@ def main():
     sector_ID_list.sort()
 
     save_nc = True
-    save_tif = False
-
-    # set directory to save output
-    # path2data = os.path.join(homedir,'Data/NERD/dmg095_nc/data_sector/') # save dir
+    # save_tif = False
+    # save_tile = False
 
     # for year in years_list:
     # res='400m' # default
-    if varName == 'dmg-25px':
-        region_data = region_data.rename({'dmg-25px':'dmg'})
-        res='1000m'
     if int(year) == 1997 or int(year) == 2000:
         res='1000m'
-        tilepath_in = os.path.join(homedir,f'Data/RAMP/RAMP_tiled/dmg_tiled/dmg095/')
+        # tilepath_in = os.path.join(homedir,f'Data/RAMP/RAMP_tiled/dmg_tiled/dmg095_removeRelorbBounds/')
 
-    for sector_ID in ['ASE']: # sector_list: # ['WS-a','WS-b']: # sector_ID_list:#['ASE']:#['WS']: #sector_ID_list:
+    # for sector_ID in ['ASE']: # sector_list: # ['WS-a','WS-b']: 
+    for sector_ID in sector_list: # ['WS-a','WS-b']: 
         if sector_ID == 'WIS' : # skip WIS in favor of WIS-a and WIS-b (process in parts due to memory usage)
             continue 
         if sector_ID == 'WS' and res=='400m':
@@ -173,11 +166,11 @@ def main():
         ## select tiles
         tileNums_select = myf.get_tilelist_region(sector_poly, sector_ID, gridTiles=gridTiles)
 
-        # Skip some tiles of FR and ROSS iceshelves that have nodata for S1 observations
-        if not varName == 'nodata':
-            tileNums_skip = [130,131,146,147,148,158,159,160,167,168,169, 170, 171,177,178,179,180,187,188,189,190,196,197,198,206,207,217,218] # for RV
-            tileNums_skip = tileNums_skip + [62,63,70,71,72,78,79,80,86,87,88,89,95,96,97,98,105,106,107,108,115,116,117,118,132,133,134,135,136,137,138,149,150] # for FR
-            tileNums_select = [tileNum for tileNum in tileNums_select if tileNum not in tileNums_skip]
+        # # Skip some tiles of FR and ROSS iceshelves that have nodata for S1 observations
+        # if not varName == 'nodata':
+        #     tileNums_skip = [130,131,146,147,148,158,159,160,167,168,169, 170, 171,177,178,179,180,187,188,189,190,196,197,198,206,207,217,218] # for RV
+        #     tileNums_skip = tileNums_skip + [62,63,70,71,72,78,79,80,86,87,88,89,95,96,97,98,105,106,107,108,115,116,117,118,132,133,134,135,136,137,138,149,150] # for FR
+        #     tileNums_select = [tileNum for tileNum in tileNums_select if tileNum not in tileNums_skip]
 
         print('--- \nSelected {} sector; {} tiles'.format(sector_ID, len(tileNums_select)))
 
@@ -198,16 +191,11 @@ def main():
         ------------------ ''' 
 
         ## get all files in directory 
-        # year_filelist = os.listdir(os.path.join(tilepath_in,year_subdir ))
-        # year_filelist = glob.glob(os.path.join(tilepath_in,year_subdir,'*.tif' ))
         year_filelist = glob.glob(os.path.join(tilepath_in,'*.tif' ))
         year_filelist.sort()
         print(f'.. {len(year_filelist)} files')
 
         ## select tiles in region
-        # if int(year) == 2000:
-        #     fnames_region = [fname for fname in year_filelist if int(fname.split('tile_')[1].split('_')[0]) in tileNums_select]
-        # else:
         fnames_region = [fname for fname in year_filelist if int(os.path.basename(fname).split('.')[0].split('tile_')[1]) in tileNums_select]
         # filelist_region  = [ os.path.join(tilepath_in,year_subdir, fname) for fname in fnames_region ]
         filelist_region  = fnames_region # [ os.path.join(tilepath_in, fname) for fname in fnames_region ]
@@ -225,6 +213,10 @@ def main():
         )
         # print(region_data)
         
+        if varName == 'dmg-25px':
+            region_data = region_data.rename({'dmg-25px':'dmg'})
+            res='1000m'
+            
         ## for uncertainty dmg
         ## # add time-dimension to xarray.DataArray
         ## region_data = xr.DataArray( data = np.expand_dims(region_data[varName],-1),  # (y,x) to (y,x,1)
@@ -239,7 +231,6 @@ def main():
 
         ''' ## Fill dmg NaN values as 0  '''
         region_data = region_data.where(~np.isnan(region_data),other=0 ) # no-dmg = 0
-
 
         
         ''' --------------------------------------
@@ -281,35 +272,40 @@ def main():
             region_data = region_data.rio.clip( 
                                 iceshelf_year.geometry, iceshelf_year.crs, 
                                 drop=True, invert=False)
-            print(data_da)
+            region_data.attrs['description'] = 'Detected Damage on Antarctic ice shelves using NeRD algorithm, derived from SAR GRD data '
+            region_data.attrs['long_name'] = 'detected_damage'
+            region_data.attrs['units'] = '-'
+            region_data.attrs['license'] = 'CC BY 4.0'
+            region_data.attrs['observation_year'] = year
+            region_data.attrs['CRS'] = 'EPSG:3031'
+            
+            
+        
+        
+        ''' --------------------------------------
+        also clip to region to avoid overlap of different netCDF files
+        ------------------------------------------ '''
+        if 'dmg' in varName:
+            print('.. clippinig to sector')
+            sector_gpd = sector_poly.loc[sector_poly['sector_ID']==sector_ID]
+            region_data = region_data.rio.clip( 
+                                sector_gpd.geometry, sector_gpd.crs, 
+                                drop=False, invert=False)
+            
 
+        print(region_data)
+        
         ''' --------------------------------------
         Save netCDF/GeoTIFF
         ------------------------------------------ '''
-
-        # ## Check if data exitsts
-        # nc_filename = f'{varName}_sector-{sector_ID}_{year}-SON_{res}.nc' #nc_base + '_' + str(year_part) + '.nc'
-        # tiff_file = f'{varName}_sector-{sector_ID}_{year}-SON_{res}.tif' 
-        # already_exists = os.path.isfile( os.path.join( path2save, nc_filename ) )
         
         if save_nc:
-            if not os.path.isfile( os.path.join( path2save, nc_filename ) ):
-                print('.. Saving to nectdf {} '.format(nc_filename))
-                ## do the saving
-                # delayed_obj = data_da.to_netcdf(os.path.join(path2save,nc_filename),mode='w',format='NETCDF4',compute=False)
-                # delayed_obj = region_data.to_netcdf(os.path.join(path2save,nc_filename),mode='w',format='NETCDF4',compute=False)
-                delayed_obj = region_data.to_netcdf(os.path.join(path2save,nc_filename),mode='w',compute=False)
-                with ProgressBar():
-                    results = delayed_obj.compute()
+            # if not os.path.isfile( os.path.join( path2save, nc_filename ) ):
+            print('.. Saving to nectdf {} \n {} '.format(path2save, nc_filename))
+            delayed_obj = region_data.to_netcdf(os.path.join(path2save,nc_filename),mode='w',compute=False)
+            with ProgressBar():
+                results = delayed_obj.compute()
                 
-        if save_tif: 
-            if not os.path.isfile( os.path.join( path2save, tiff_file ) ):
-                print('.. Saving to geotiff ', tiff_file)
-                if len(region_data.dims) > 2:
-                    data_da= data_da.isel(time=0).drop('time')
-                    print(data_da.dims)
-                # save it, now with CRS and as Cloud Optimized Geotiff
-                data_da.rio.to_raster( os.path.join(path2save, tiff_file),driver="COG") 
 
         ## close files for memory reading issues
         data_da.close() 

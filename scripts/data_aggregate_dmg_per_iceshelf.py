@@ -162,7 +162,7 @@ def main( region_ID, sector_ID, dmg_type = 'dmg095',
             region_ds = xr.concat([region_ramp, region_ds],dim='time') 
 
         elif resolution == '1000m': ## All data at RAMP 1000m resolution
-            print('--- Loading (Downsampled) 1000m data ---- ')
+            print('--- Loading 1000m data ---- ')
             filelist_dmg =  glob.glob( os.path.join(path2nc,'damage/', 'data_sector-'+region_ID+'_dmg_1000m_*.nc') )
             filelist_dmg = [file for file in filelist_dmg if '1997' not in file] 
             filelist_dmg.sort()
