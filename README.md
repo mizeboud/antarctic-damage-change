@@ -1,8 +1,8 @@
 # antarctic-damage-change
-Created by Dr. Maaike Izeboud (maaike.izeboud@vub.be)
+Created by Dr. Maaike Izeboud, Delft University of Technology / Vrije Universiteit Brussel
 
 # Intro
-This repository provides code accompanying the publication "Damage development on Antarctic ice shelves sensitive to climate warming" by M. Izeboud, S. Lhermitte, S. de Roda Husman, B. Wouters, in review at Nature Climate Change (2025).
+This repository provides code accompanying the manuscript "Damage development on Antarctic ice shelves sensitive to climate warming" by M. Izeboud, S. Lhermitte, S. de Roda Husman, B. Wouters, in review at Nature Climate Change (2025).
 
 # About the project
 In this project, we
@@ -66,5 +66,5 @@ A DOI will be included upon acceptance of the paper.
 ## More info
 
 - The Normalised Radon Transform Damage (NeRD) detection method, used to create the damage maps, can be found at  [github.com/mizeboud/NormalisedRadonTransform](https://github.com/mizeboud/NormalisedRadonTransform)
-- Supplementary Material for the paper can be found at the 4TU repository with DOI: 10.4121/911e8799-f0dc-42e3-82b4-766ad680a71e
-- Annual damage maps are published at the 4TU repository with DOI: 10.4121/70f914ee-b20d-4682-b2ec-54eddcc8569d or viewed in Google Earth Engine (GEE): https://code.earthengine.google.com/b7438668b59e075b21347a9ae8c142e1
+- Supplementary Material for the paper can be found at the 4TU repository with DOI: https://doi.org/10.4121/911e8799-f0dc-42e3-82b4-766ad680a71e
+- Annual damage maps are published at the 4TU repository with DOI:  https://doi.org/10.4121/70f914ee-b20d-4682-b2ec-54eddcc8569d or viewed in Google Earth Engine (GEE): https://code.earthengine.google.com/1984c17a29c3720e7ad3327a79a81527
