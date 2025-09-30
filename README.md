@@ -2,7 +2,8 @@
 Created by Dr. Maaike Izeboud, Delft University of Technology / Vrije Universiteit Brussel
 
 # Intro
-This repository provides code accompanying the manuscript "Damage development on Antarctic ice shelves sensitive to climate warming" by M. Izeboud, S. Lhermitte, S. de Roda Husman, B. Wouters, in review at Nature Climate Change (2025).
+This repository provides code accompanying the manuscript "Damage development on Antarctic ice shelves sensitive to climate warming" by M. Izeboud, B. Wouters, S. de Roda Husman, S. Lhermitte, accepted for publication in Nature Climate Change (2025).
+
 
 # About the project
 In this project, we
@@ -61,7 +62,7 @@ In this study a lot of data was processed on a large spatial domain (Antarctic i
 
 
 ## How to cite
-A DOI will be included upon acceptance of the paper.
+paper DOI: 10.1038/s41558-025-02453-4
 
 ## More info
 
