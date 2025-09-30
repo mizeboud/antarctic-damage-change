@@ -62,7 +62,8 @@ In this study a lot of data was processed on a large spatial domain (Antarctic i
 
 
 ## How to cite
-paper DOI: 10.1038/s41558-025-02453-4
+paper DOI: https://doi.org/10.1038/s41558-025-02453-4
+
 
 ## More info
 
